@@ -5,6 +5,7 @@ Works without Streamlit. Terminal usage:
     python recommender.py recommend "bohemian" Japan [--pick 0] [-n 10]
 """
 import argparse
+import os
 
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
@@ -13,6 +14,7 @@ from sklearn.preprocessing import StandardScaler
 from countries import COUNTRY_GENRES, in_country
 
 DATA_PATH = "data/cleaned.csv"
+EXCLUDED_PATH = "data/excluded_tracks.csv"  # hand-reviewed wrong-country songs
 FEATURES = [
     "valence", "energy", "danceability", "acousticness", "tempo",
     "loudness", "speechiness", "instrumentalness", "liveness",
@@ -20,14 +22,18 @@ FEATURES = [
 
 
 class Recommender:
-    def __init__(self, path=DATA_PATH):
+    def __init__(self, path=DATA_PATH, excluded_path=EXCLUDED_PATH):
         self.df = pd.read_csv(path)
+        excluded = set()
+        if os.path.exists(excluded_path):
+            excluded = set(pd.read_csv(excluded_path)["track_id"])
+        not_excluded = ~self.df["track_id"].isin(excluded).to_numpy()
         # Scale on the full dataset so any input song (any genre) lands in the
         # same feature space as the candidates.
         self.X = StandardScaler().fit_transform(self.df[FEATURES])
         genre_sets = self.df["genres"].str.split(";").apply(set)
         self._country_mask = {
-            country: genre_sets.apply(lambda g: in_country(g, country)).to_numpy()
+            country: genre_sets.apply(lambda g: in_country(g, country)).to_numpy() & not_excluded
             for country in COUNTRY_GENRES
         }
 
