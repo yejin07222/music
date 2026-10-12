@@ -34,7 +34,24 @@ Rule: a song counts for a country only if it has one of that country's genres
 | Wrong-country songs in top 10 | 4 (Kannada, 2x Tamil, Hindi) | 0 |
 | Results | mix of K-pop and Indian film songs | Korean ballads (LeeHi, SOYOU, TAEYEON, BIBI, HEIZE, DAVICHI...) |
 
-## 4. Remaining limitation
+## 4. Looking for more Korean songs in other genres
+
+After the review only 395 South Korea songs were left, so we searched songs
+**not** tagged `k-pop` for Korean ones: Hangul in the title or artist name, or
+an artist who appears in the 395 kept songs (`review/korea_candidates.csv`).
+
+- 227 candidates were found. Only 6 had Hangul; the other 221 matched by
+  artist and were mostly Western artists who featured on K-pop songs
+  (Sia, Halsey, Nicki Minaj, ...), so they were ignored.
+- Claude flagged the 6 Hangul songs as likely Korean. After a manual check,
+  only **5 were really Korean** (the One Punch Man theme was not).
+- The 5 are in `data/included_tracks.csv` and are added to South Korea by
+  track ID, because their genres (singer-songwriter, opera, new-age) are not
+  country genres.
+- Result: South Korea has **400** songs. So the dataset contains only about
+  400 Korean songs in total.
+
+## 5. Remaining limitation
 
 Only South Korea was reviewed. Other countries were **not** checked, and
 similar mislabeling may exist (India, Turkey, Malaysia, China and Hong Kong
