@@ -6,7 +6,7 @@ import os
 
 import pandas as pd
 
-from countries import COUNTRY_GENRES
+from countries import COUNTRY_GENRES, in_country
 
 RAW_PATH = "data/dataset.csv"
 CLEAN_PATH = "data/cleaned.csv"
@@ -61,10 +61,10 @@ def main():
 
     df.to_csv(CLEAN_PATH, index=False)
 
-    genre_sets = df["genres"].str.split(";")
-    print("\nSongs per country (a song with genres in two countries counts in both):")
-    for country, genres in COUNTRY_GENRES.items():
-        n = genre_sets.apply(lambda g: any(x in genres for x in g)).sum()
+    genre_sets = df["genres"].str.split(";").apply(set)
+    print("\nSongs per country (songs tagged with another country's genre excluded):")
+    for country in COUNTRY_GENRES:
+        n = genre_sets.apply(lambda g: in_country(g, country)).sum()
         print(f"  {country:<24}{n:>7,}")
 
     print(f"\n{CLEAN_PATH}: {os.path.getsize(CLEAN_PATH) / 1024 / 1024:.2f} MB")
