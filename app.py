@@ -32,6 +32,9 @@ COUNTRY_LABELS = {
     "English-language": "영어권",
 }
 
+# Shown first in the country dropdown; the other countries follow in their usual order.
+COUNTRY_ORDER_FIRST = ["South Korea", "Japan", "English-language", "China (Mandarin)"]
+
 # Features shown in the "why this song" chart: (column, Korean name).
 CHART_FEATURES = [
     ("valence", "밝기"),
@@ -151,7 +154,8 @@ df = rec.df
 bounds = {c: (df[c].quantile(0.01), df[c].quantile(0.99)) for c in RESCALED}
 
 query = st.text_input("노래 제목이나 가수 이름", placeholder="예: Someone Like You")
-country = st.selectbox("나라 선택", rec.countries, format_func=COUNTRY_LABELS.get)
+countries = COUNTRY_ORDER_FIRST + [c for c in rec.countries if c not in COUNTRY_ORDER_FIRST]
+country = st.selectbox("나라 선택", countries, format_func=COUNTRY_LABELS.get)
 
 if not query.strip():
     st.info("노래 제목이나 가수 이름을 입력하면 시작할 수 있어요.")
