@@ -187,3 +187,45 @@ KOBUKURO, RADWIMPS). 4 of the 10 songs are the same as before.
 
 Not done: the other Japan genres (j-pop, j-idol, j-dance, anime) were not
 reviewed, and only South Korea and Japan's j-rock have been checked by hand.
+
+## 10. Hand review of all 영어권 artists and Japan's other genres
+
+Two more artist lists were classified by hand and applied by the **first-listed
+artist** of each song (featured artists do not decide):
+
+- `review/english_pool_remove.csv`: 1,073 artists that are not English-language
+  (Spanish, Punjabi, Hindi, Indonesian, Tamil, Portuguese...). Their songs were
+  removed from 영어권 only: **2,826 songs** (`data/removed_from_country.csv`,
+  country `English-language`). Other countries' pools were not touched.
+- `review/japan_other_marks.csv` (Japan songs outside the j-rock review):
+  - `E` English-language (456 artists, mostly Jamaican dancehall and Western
+    jazz): **1,180 songs** removed from Japan and added to 영어권.
+  - `N` neither Japanese nor English (77 artists): **133 songs** removed from
+    Japan and added to `data/excluded_tracks.csv`.
+  - Artists not in the file are Japanese and stay.
+- `review/unsure_artists.txt` (30 artists): left as they are. One of them,
+  Zack Tabudlo, was also in the removal list; his 16 songs stay in 영어권.
+- Names that did not match a first artist (328 + 301) only appear as featured
+  artists, so those songs stay (13 songs in each list). One song,
+  "Invincible (feat. Stefflon Don)" by Sidhu Moose Wala, only joined the 영어권
+  pool after the Japan removals freed its featured artist; a second pass
+  removed it. If more reviews are applied, run the pass again until nothing is
+  left. The same happened to one N-marked song ("Intuisi" by Yura Yunita,
+  Indonesian), which was removed from 영어권 as well (the 2,827th song).
+
+Counts: Japan 3,701 -> **2,388** (-1,313). 영어권 13,587 -> **11,990**
+(-2,827 removed, +1,180 moved from Japan, +50 songs that joined because their
+artists are no longer in Japan's pool). South Korea (400) and the other pools
+are unchanged.
+
+Before/after (default matching):
+- Nirvana -> Japan: identical top 10 (all `j-rock`).
+- BTS "21st Century Girl" -> 영어권: 5 of 10 songs are the same. The Punjabi
+  song by Sidhu Moose Wala at #1 is gone; the new entries are mostly dancehall
+  songs that moved over from Japan (Charly Black, Koffee, Tanto Metro,
+  Vybz Kartel).
+
+Not done: j-pop, j-idol, j-dance and anime artists were reviewed only through
+the artist list above; the other countries' pools (India, Iran, Turkey,
+Malaysia, China, Hong Kong...) were not reviewed. Files from Windows downloads
+(`*:Zone.Identifier`) are ignored by git.

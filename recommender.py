@@ -104,6 +104,7 @@ class Recommender:
             & ~foreign_artist.to_numpy()
             & not_excluded
         ) | (self.df["track_id"].isin(included.get(ENGLISH_COUNTRY, ())).to_numpy() & not_excluded)
+        self._country_mask[ENGLISH_COUNTRY] &= ~self.df["track_id"].isin(removed.get(ENGLISH_COUNTRY, ())).to_numpy()
 
     @property
     def countries(self):

@@ -100,7 +100,45 @@ def test_japan_review_is_applied(rec):
     assert not d.track_id[japan].isin(e_ids | n_ids).any()  # both removed from Japan
     assert set(d.track_id[english]) >= e_ids  # E songs are in 영어권
     assert not d.track_id[english].isin(n_ids).any()  # N songs are in no pool
-    assert int(japan.sum()) == 3701
     kept = review.track_id[marks == ""]
     assert len(kept) == 707 and d.track_id[japan].isin(kept).sum() == 707  # all unmarked songs stay in Japan
     assert review.loc[review.artists == "ONE OK ROCK;5 Seconds of Summer", "keep"].eq("").all()
+
+
+def _first_artist_keys(names):
+    import unicodedata
+
+    return {unicodedata.normalize("NFC", n).strip().casefold() for n in names}
+
+
+def _first(rec):
+    import unicodedata
+
+    return rec.df["artists"].str.split(";").str[0].map(lambda x: unicodedata.normalize("NFC", x).strip().casefold())
+
+
+def test_artist_marks_are_applied(rec):
+    d, first = rec.df, _first(rec)
+    japan, english = rec._country_mask["Japan"], rec._country_mask[ENGLISH_COUNTRY]
+    unsure = _first_artist_keys(l.split("|")[0] for l in open("review/unsure_artists.txt", encoding="utf-8-sig") if l.strip())
+
+    remove = pd.read_csv("review/english_pool_remove.csv", dtype=str, keep_default_na=False)
+    marks = pd.read_csv("review/japan_other_marks.csv", dtype=str, keep_default_na=False)
+    gone = _first_artist_keys(remove.artist) - unsure
+    e_artists = _first_artist_keys(marks[marks.mark == "E"].artist) - unsure
+    n_artists = _first_artist_keys(marks[marks.mark == "N"].artist) - unsure
+
+    assert not (english & first.isin(gone)).any()  # non-English artists are out of 영어권
+    assert not (japan & first.isin(e_artists | n_artists)).any()  # E and N artists are out of Japan
+    assert (english & first.isin(e_artists)).sum() > 1000  # E songs moved to 영어권
+    assert not first[english].isin(n_artists).any()  # N songs are in no 영어권
+    # the removal from 영어권 does not touch the other countries' pools
+    other = [m for c, m in rec._country_mask.items() if c not in ("Japan", ENGLISH_COUNTRY)]
+    assert sum(int(m.sum()) for m in other) == 400 + 843 + 838 + 951 + 951 + 917 + 963 + 5031 + 958 + 786 + 840 + 3553
+    # unsure artists are left as they were
+    assert (english & (first == "zack tabudlo")).sum() == 16
+
+
+def test_pool_sizes_after_reviews(rec):
+    assert int(rec._country_mask["Japan"].sum()) == 2388
+    assert int(rec._country_mask[ENGLISH_COUNTRY].sum()) == 11990
