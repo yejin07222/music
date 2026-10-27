@@ -117,3 +117,43 @@ it did not drop measurably.
   script from other languages still get through, mostly Spanish and Portuguese
   rock/metal bands, French and German artists, and Punjabi/Hindi hip-hop, when
   they are tagged only with generic genres and their artist is in no other pool.
+
+## 8. Matching method
+
+The app uses **Euclidean distance on weighted features, plus a style bonus of
+0.2** (`MATCH` in `app.py`, `STYLE_BONUS` in `recommender.py`). The original
+cosine method is still the default of `Recommender.recommend()`, so the
+versions can be compared.
+
+- Distance: similarity = 1 / (1 + Euclidean distance) on the scaled features.
+- Weights (multipliers on the scaled features): valence, energy, acousticness,
+  danceability, tempo 1.5; loudness, instrumentalness 1.0; liveness,
+  speechiness 0.5 (`FEATURE_WEIGHTS`).
+- Style: if the input song's genres include a style (rock, ballad, hip-hop,
+  dance, acoustic, r&b; `STYLE_FAMILIES`), songs of the target country with a
+  genre of the same style get +0.2. It only helps where the target pool has
+  style tags: Japan yes, South Korea no (395 of 400 songs are only `k-pop`).
+  Songs found online have no genre, so they use distance + weights only.
+
+Nirvana "Smells Like Teen Spirit" -> Japan, rank of two songs we looked at:
+
+| Method | Hyperventilation (RADWIMPS) | TATTOO (Akina Nakamori, j-idol) |
+|---|---|---|
+| A: cosine (original) | #2 | #5 |
+| Euclid + weights | #13 | #10 |
+| + style 0.1 | #10 | #44 |
+| + style 0.2 | #9 | outside top 50 |
+| + style 0.3 | #9 | outside top 50 |
+
+With style 0.2 or 0.3 the top 10 is the same, all `j-rock`. The big drop of
+Hyperventilation comes from the Euclidean/weighted distance, not from the style.
+
+Overlap test, style 0.3 (same top 10 for 0.2): Nirvana "Smells Like Teen
+Spirit" and Kansas "Dust in the Wind" (slow, soft rock) -> Japan share **0
+songs** in their top 10 (also 0 with the original method), so the results do
+depend on the input song.
+
+Problem found by that test: 4 of the 10 results for the soft song were not
+Japanese (The Bangles, Big Star, Frank Zappa, and Turkish songs by Yeni Turku,
+Zeki Muren and MFO). Their only country tag is `j-rock`, and the style bonus
+favours that tag. Japan's `j-rock` songs have not been reviewed by hand yet.

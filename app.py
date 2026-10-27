@@ -10,6 +10,9 @@ from recommender import Recommender
 from online_lookup import LookupFailed, fetch_features, search_songs
 
 N_RESULTS = 10
+# Matching used by the app: Euclidean distance on weighted features, plus a style bonus when the
+# input song's genres are known (see NOTES.md section 8).
+MATCH = {"method": "euclid", "weighted": True}
 
 # Display names only; the keys must match countries.COUNTRY_GENRES.
 COUNTRY_LABELS = {
@@ -89,8 +92,8 @@ def recommend_from_online(query, country):
         st.error(f"{LOOKUP_ERRORS[e.code]} 대신 슬라이더로 분위기를 정해 보세요.")
         return None
     if spotify_id and (df["track_id"] == spotify_id).any():  # it was in our data after all
-        return rec.recommend(spotify_id, country, N_RESULTS), features, "내가 고른 곡"
-    return rec.recommend_from_mood(features, country, N_RESULTS), features, "내가 고른 곡"
+        return rec.recommend(spotify_id, country, N_RESULTS, style=True, **MATCH), features, "내가 고른 곡"
+    return rec.recommend_from_mood(features, country, N_RESULTS, **MATCH), features, "내가 고른 곡"
 
 
 def song_label(row):
@@ -171,7 +174,7 @@ if found.empty:
             "acousticness": st.slider("어쿠스틱", 0.0, 1.0, 0.5, 0.05, help="높을수록 전자음 없이 악기 소리 중심"),
             "tempo": st.slider("템포 (BPM)", 60, 200, 120, 5),
         }
-        results = rec.recommend_from_mood(mood, country, N_RESULTS)
+        results = rec.recommend_from_mood(mood, country, N_RESULTS, **MATCH)
         my_values = mood
         my_name = "내가 정한 분위기"
 else:
@@ -181,7 +184,7 @@ else:
         list(songs),
         format_func=lambda tid: song_label(songs[tid]),
     )
-    results = rec.recommend(track_id, country, N_RESULTS)
+    results = rec.recommend(track_id, country, N_RESULTS, style=True, **MATCH)
     my_values = df.loc[df["track_id"] == track_id, [c for c, _ in CHART_FEATURES]].iloc[0].to_dict()
     my_name = "내가 고른 곡"
 

@@ -70,3 +70,15 @@ def test_unknown_inputs_raise(rec):
         rec.recommend(rec.df.track_id.iloc[0], "Narnia")
     with pytest.raises(ValueError):
         rec.recommend(rec.df.track_id.iloc[0], "Japan", method="manhattan")
+
+
+def test_style_bonus_default_and_mood_options(rec):
+    import recommender
+
+    assert recommender.STYLE_BONUS == 0.2
+    mood = {"valence": 0.8, "energy": 0.8, "tempo": 130}
+    a = rec.recommend_from_mood(mood, "Japan", 10)
+    b = rec.recommend_from_mood(mood, "Japan", 10, method="euclid", weighted=True)
+    assert len(a) == len(b) == 10 and a.track_id.tolist() != b.track_id.tolist()
+    with pytest.raises(ValueError):
+        rec.recommend_from_mood(mood, "Japan", method="manhattan")

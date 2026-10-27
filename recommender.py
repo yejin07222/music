@@ -43,7 +43,7 @@ STYLE_FAMILIES = {
     "acoustic": {"acoustic", "folk", "bluegrass", "singer-songwriter", "guitar"},
     "r&b": {"r-n-b", "soul", "funk", "groove"},
 }
-STYLE_BONUS = 0.1  # added to the 0-1 similarity of candidates whose style matches the input's
+STYLE_BONUS = 0.2  # added to the 0-1 similarity of candidates whose style matches the input's
 
 
 @functools.lru_cache(maxsize=None)
@@ -138,7 +138,7 @@ class Recommender:
         candidates[i] = False  # never recommend the input song itself
         return self._rank(self.X[i], candidates, n, method, weighted, self._styles[i] if style else None)
 
-    def recommend_from_mood(self, mood, country, n=10):
+    def recommend_from_mood(self, mood, country, n=10, method="cosine", weighted=False):
         """Like `recommend`, but the target is a mood instead of a song.
 
         `mood` maps some of FEATURES to raw values (e.g. {"valence": 0.8,
@@ -152,7 +152,7 @@ class Recommender:
             raise ValueError(f"Unknown features: {sorted(unknown)}")
         raw = pd.DataFrame([{**dict(zip(FEATURES, self.scaler.mean_)), **mood}])
         target = self.scaler.transform(raw[FEATURES])[0]
-        return self._rank(target, self._country_mask[country], n)
+        return self._rank(target, self._country_mask[country], n, method, weighted)
 
     def _rank(self, target, candidates, n, method="cosine", weighted=False, styles=None):
         if method not in ("cosine", "euclid"):
