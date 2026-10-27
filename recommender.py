@@ -35,7 +35,8 @@ class Recommender:
                 included.setdefault(row.country, set()).add(row.track_id)
         # Scale on the full dataset so any input song (any genre) lands in the
         # same feature space as the candidates.
-        self.X = StandardScaler().fit_transform(self.df[FEATURES])
+        self.scaler = StandardScaler().fit(self.df[FEATURES])
+        self.X = self.scaler.transform(self.df[FEATURES])
         genre_sets = self.df["genres"].str.split(";").apply(set)
         self._country_mask = {
             country: (
@@ -76,9 +77,27 @@ class Recommender:
 
         candidates = self._country_mask[country].copy()
         candidates[i] = False  # never recommend the input song itself
-        idx = candidates.nonzero()[0]
+        return self._rank(self.X[i], candidates, n)
 
-        sims = cosine_similarity(self.X[i : i + 1], self.X[idx])[0]
+    def recommend_from_mood(self, mood, country, n=10):
+        """Like `recommend`, but the target is a mood instead of a song.
+
+        `mood` maps some of FEATURES to raw values (e.g. {"valence": 0.8,
+        "tempo": 140}). Features not given are set to the dataset average, so
+        they do not pull the ranking either way.
+        """
+        if country not in self._country_mask:
+            raise ValueError(f"Unknown country: {country!r}")
+        unknown = set(mood) - set(FEATURES)
+        if unknown:
+            raise ValueError(f"Unknown features: {sorted(unknown)}")
+        raw = pd.DataFrame([{**dict(zip(FEATURES, self.scaler.mean_)), **mood}])
+        target = self.scaler.transform(raw[FEATURES])[0]
+        return self._rank(target, self._country_mask[country], n)
+
+    def _rank(self, target, candidates, n):
+        idx = candidates.nonzero()[0]
+        sims = cosine_similarity(target.reshape(1, -1), self.X[idx])[0]
         top = sims.argsort()[::-1][:n]
         result = self.df.iloc[idx[top]].copy()
         result["similarity"] = sims[top]
