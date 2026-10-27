@@ -145,9 +145,3 @@ def test_failed_cover_lookups_are_retried_later_but_found_ones_are_kept():
         out = media.covers(list(answers), now=now)
         assert m.call_count == 3 and out["f" * 22] == "https://i.scdn.co/f" and out["g" * 22] == "https://i.scdn.co/g"
     media._cover_cache.clear()
-
-
-def test_links_markdown():
-    out = media.links_markdown([("Spotify", "https://open.spotify.com/track/" + ID), ("YouTube", "https://a.com/x(1) y")])
-    assert out == f"듣기: [Spotify](https://open.spotify.com/track/{ID}) · [YouTube](https://a.com/x%281%29%20y)"
-    assert media.links_markdown([]) is None

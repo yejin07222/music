@@ -155,12 +155,3 @@ def listen_links(artists, title, track_id=None, deezer_link=None):
     first = ("Spotify", spotify_track_url(track_id)) if track_id else ("Deezer", deezer_track_url(deezer_link))
     links = [first, ("YouTube", youtube_search_url(artists, title))]
     return [(label, url) for label, url in links if url]
-
-
-def links_markdown(links, prefix="듣기: "):
-    """Small markdown links (Streamlit opens external links in a new tab); None if there are none."""
-    if not links:
-        return None
-    safe = lambda url: url.replace(" ", "%20").replace("(", "%28").replace(")", "%29")
-    label = lambda text: re.sub(r"([\\\[\]])", r"\\\1", text)
-    return prefix + " · ".join(f"[{label(name)}]({safe(url)})" for name, url in links)
