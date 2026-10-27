@@ -20,6 +20,7 @@ _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")  # 
 DATA_PATH = os.path.join(_DATA_DIR, "cleaned.csv")
 EXCLUDED_PATH = os.path.join(_DATA_DIR, "excluded_tracks.csv")  # hand-reviewed wrong-country songs
 INCLUDED_PATH = os.path.join(_DATA_DIR, "included_tracks.csv")  # hand-added songs (track_id, country)
+REMOVED_PATH = os.path.join(_DATA_DIR, "removed_from_country.csv")  # hand-removed from one country (track_id, country)
 FEATURES = [
     "valence", "energy", "danceability", "acousticness", "tempo",
     "loudness", "speechiness", "instrumentalness", "liveness",
@@ -58,7 +59,8 @@ def has_non_latin(text):
 
 
 class Recommender:
-    def __init__(self, path=DATA_PATH, excluded_path=EXCLUDED_PATH, included_path=INCLUDED_PATH):
+    def __init__(self, path=DATA_PATH, excluded_path=EXCLUDED_PATH, included_path=INCLUDED_PATH,
+                 removed_path=REMOVED_PATH):
         self.df = pd.read_csv(path)
         excluded = set()
         if os.path.exists(excluded_path):
@@ -68,6 +70,10 @@ class Recommender:
         if os.path.exists(included_path):
             for row in pd.read_csv(included_path).itertuples():
                 included.setdefault(row.country, set()).add(row.track_id)
+        removed = {}  # country -> track_ids taken out of that country only
+        if os.path.exists(removed_path):
+            for row in pd.read_csv(removed_path).itertuples():
+                removed.setdefault(row.country, set()).add(row.track_id)
         # Scale on the full dataset so any input song (any genre) lands in the
         # same feature space as the candidates.
         self.scaler = StandardScaler().fit(self.df[FEATURES])
@@ -81,7 +87,7 @@ class Recommender:
             country: (
                 genre_sets.apply(lambda g: in_country(g, country)).to_numpy()
                 | self.df["track_id"].isin(included.get(country, ())).to_numpy()
-            ) & not_excluded
+            ) & not_excluded & ~self.df["track_id"].isin(removed.get(country, ())).to_numpy()
             for country in COUNTRY_GENRES
         }
         # English-language (not reviewed by hand): an English-ish genre, no other country's
@@ -97,7 +103,7 @@ class Recommender:
             & latin_only.to_numpy()
             & ~foreign_artist.to_numpy()
             & not_excluded
-        )
+        ) | (self.df["track_id"].isin(included.get(ENGLISH_COUNTRY, ())).to_numpy() & not_excluded)
 
     @property
     def countries(self):

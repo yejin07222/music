@@ -21,9 +21,15 @@ def test_country_pools_exist_and_south_korea_is_reviewed(rec):
     assert int(rec._country_mask["South Korea"].sum()) == 400
 
 
+def _hand_added_english():
+    inc = pd.read_csv("data/included_tracks.csv")
+    return set(inc.loc[inc["country"] == ENGLISH_COUNTRY, "track_id"])
+
+
 def test_english_pool_rules(rec):
     d = rec.df
-    sel = d[rec._country_mask[ENGLISH_COUNTRY]]
+    # songs added to 영어권 by hand (reviewed as English despite a j-rock tag) skip the genre rules
+    sel = d[rec._country_mask[ENGLISH_COUNTRY] & ~d["track_id"].isin(_hand_added_english())]
     assert len(sel) > 10_000
     genres = sel["genres"].str.split(";").apply(set)
     banned = all_country_genres() | set(ENGLISH_EXCLUDED_TAGS)
@@ -40,7 +46,7 @@ def test_english_pool_has_no_artist_from_another_country(rec):
     for m in others:
         in_other |= m
     other_artists = {a for s in rec.df.loc[in_other, "artists"] for a in s.split(";")}
-    sel = rec.df[rec._country_mask[ENGLISH_COUNTRY]]
+    sel = rec.df[rec._country_mask[ENGLISH_COUNTRY] & ~rec.df["track_id"].isin(_hand_added_english())]
     assert not sel["artists"].apply(lambda s: any(a in other_artists for a in s.split(";"))).any()
 
 
@@ -82,3 +88,19 @@ def test_style_bonus_default_and_mood_options(rec):
     assert len(a) == len(b) == 10 and a.track_id.tolist() != b.track_id.tolist()
     with pytest.raises(ValueError):
         rec.recommend_from_mood(mood, "Japan", method="manhattan")
+
+
+def test_japan_review_is_applied(rec):
+    d = rec.df
+    japan, english = rec._country_mask["Japan"], rec._country_mask[ENGLISH_COUNTRY]
+    review = pd.read_csv("review/japan_jrock_review.csv", dtype=str, keep_default_na=False, encoding="utf-8-sig")
+    marks = review["keep"].str.strip().str.upper()
+    e_ids, n_ids = set(review.track_id[marks == "E"]), set(review.track_id[marks == "N"])
+    assert len(e_ids) == 88 and len(n_ids) == 94
+    assert not d.track_id[japan].isin(e_ids | n_ids).any()  # both removed from Japan
+    assert set(d.track_id[english]) >= e_ids  # E songs are in 영어권
+    assert not d.track_id[english].isin(n_ids).any()  # N songs are in no pool
+    assert int(japan.sum()) == 3701
+    kept = review.track_id[marks == ""]
+    assert len(kept) == 707 and d.track_id[japan].isin(kept).sum() == 707  # all unmarked songs stay in Japan
+    assert review.loc[review.artists == "ONE OK ROCK;5 Seconds of Summer", "keep"].eq("").all()

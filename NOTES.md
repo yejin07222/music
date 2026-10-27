@@ -157,3 +157,33 @@ Problem found by that test: 4 of the 10 results for the soft song were not
 Japanese (The Bangles, Big Star, Frank Zappa, and Turkish songs by Yeni Turku,
 Zeki Muren and MFO). Their only country tag is `j-rock`, and the style bonus
 favours that tag. Japan's `j-rock` songs have not been reviewed by hand yet.
+
+## 9. Hand review of Japan's j-rock songs
+
+`review/japan_jrock_review.csv` lists the 889 Japan songs tagged `j-rock`, with
+automatic hints (tier "LIKELY NOT JAPANESE" 188, "maybe" 316, no warning 385).
+The hints are noisy: RADWIMPS and ONE OK ROCK were flagged only because some of
+their songs are tagged `k-pop` in the dataset. So the decisions were made by
+hand, **by artist** (first-listed artist; a Japanese main artist with a foreign
+featured artist stays in Japan, e.g. ONE OK ROCK;5 Seconds of Summer):
+
+- `E` = English-language: 43 artists, **88 songs**. Removed from Japan
+  (`data/removed_from_country.csv`) and added to 영어권
+  (`data/included_tracks.csv`).
+- `N` = neither Japanese nor English (mostly Turkish, also Brazilian, Nordic and
+  others): 36 artists, **94 songs**. Added to `data/excluded_tracks.csv`.
+- Everything else (707 songs) is Japanese and stays. The marks are in the `keep`
+  column (empty = Japanese). Excel turns names like `=LOVE` into `#NAME?`, so
+  edit this file in a text editor or import it as text.
+
+Numbers: Japan 3,883 -> **3,701** songs (-182). 영어권 13,330 -> **13,587** (+257:
+the 88 E songs, plus 169 other songs by the same artists, which are no longer
+blocked by the rule "no artist from another country's pool").
+
+Nirvana -> Japan: the top 10 did not change. Dust in the Wind -> Japan: the
+foreign songs (The Bangles, Big Star, Frank Zappa, Yeni Turku, Zeki Muren, MFO)
+are gone and replaced by Japanese songs (Aimer, Motohiro Hata, Shogo Hamada,
+KOBUKURO, RADWIMPS). 4 of the 10 songs are the same as before.
+
+Not done: the other Japan genres (j-pop, j-idol, j-dance, anime) were not
+reviewed, and only South Korea and Japan's j-rock have been checked by hand.
