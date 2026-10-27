@@ -29,3 +29,24 @@ def in_country(genres, country):
     own = COUNTRY_GENRES[country]
     others = {g for c, gs in COUNTRY_GENRES.items() if c != country for g in gs}
     return not genres.isdisjoint(own) and genres.isdisjoint(others)
+
+
+# "English-speaking" is handled separately from COUNTRY_GENRES on purpose: its genres
+# (pop, rock, dance...) are generic and also appear on songs from other countries, so
+# they must not be used to exclude songs from those countries in in_country().
+ENGLISH_COUNTRY = "English-language"
+ENGLISH_GENRES = [
+    "pop", "indie-pop", "power-pop", "synth-pop",
+    "rock", "alt-rock", "alternative", "hard-rock", "grunge", "indie", "emo",
+    "punk", "punk-rock", "metal", "heavy-metal",
+    "hip-hop", "r-n-b", "soul", "dance", "british",
+    "acoustic", "singer-songwriter", "songwriter", "folk",
+    "country", "honky-tonk", "bluegrass", "blues",
+]
+# Generic-looking tags that still point to non-English music; songs with them are left out.
+ENGLISH_EXCLUDED_TAGS = ["latin", "world-music", "dancehall", "reggae", "children"]
+
+
+def all_country_genres():
+    """Every genre that belongs to one of the (non-English) countries."""
+    return {g for genres in COUNTRY_GENRES.values() for g in genres}

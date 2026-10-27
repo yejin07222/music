@@ -60,3 +60,60 @@ results can still contain songs from other countries.
 
 Song search is a plain case-insensitive substring match on title or artist,
 so remasters, live versions and medleys appear as separate entries.
+
+## 6. Songs that are not in the dataset
+
+If a search finds nothing in the dataset, the app looks the song up online:
+title -> **Deezer** search (gives the ISRC) -> **ReccoBeats** audio features
+by ISRC (`online_lookup.py`). The features use the same scale as the dataset,
+so the same ranking is used. Any error falls back to the mood sliders.
+
+Why these two services:
+- Spotify's Search API now needs a Premium account (since February 2026), and
+  Spotify closed its own audio-features endpoint to new apps.
+- Deezer search and ReccoBeats need no API key and are free. Deezer returns an
+  ISRC for each result; ReccoBeats accepts an ISRC as its `ids` value.
+- Both are unofficial third-party services without any guarantee, so the
+  dataset search never depends on them.
+
+Known limits: Deezer's top results are sometimes covers or other versions
+(e.g. searching a Korean title alone returns mostly piano covers), and
+ReccoBeats does not have every song. Features for another release of the same
+recording can differ slightly from the dataset's values.
+
+## 7. English-language (영어권)
+
+Added as an extra option. It is **not reviewed by hand** and may include some
+non-English songs.
+
+- Genres: pop, indie-pop, power-pop, synth-pop, rock, alt-rock, alternative,
+  hard-rock, grunge, indie, emo, punk, punk-rock, metal, heavy-metal, hip-hop,
+  r-n-b, soul, dance, british, acoustic, singer-songwriter, songwriter, folk,
+  country, honky-tonk, bluegrass, blues (`ENGLISH_GENRES` in `countries.py`).
+- Excluded: songs also tagged with any other country's genre, songs in
+  `data/excluded_tracks.csv`, and songs with non-Latin letters (Hangul, kana,
+  Han, Indic scripts, Cyrillic, Arabic...) in the title or artist.
+- Cleanup (second round), because many non-English songs got through:
+  1. songs by an artist who also appears in another country's pool are removed;
+  2. songs tagged `latin`, `world-music`, `dancehall`, `reggae` or `children`
+     are removed (`ENGLISH_EXCLUDED_TAGS`).
+- The English genres are not used to exclude songs from the other countries
+  (they are too generic), so those pools are unchanged.
+
+Before / after the cleanup:
+
+| | Before | After |
+|---|---|---|
+| Pool size | 15,818 songs | 13,330 songs (-2,488) |
+| Not English in 2 random samples of 20 each (40 songs) | 12 of 40 (30%) | 13 of 40 (32.5%) |
+| BTS "21st Century Girl" -> top 5 | 2 Hindi, 1 Portuguese, 1 Spanish, 1 English | 1 Spanish (Catupecu Machu), 4 English |
+
+The sample counts were judged by Claude from the title and artist, not by a
+language detector, and 1-2 songs per sample were uncertain. Samples of 40 are
+small: the cleanup removed 16% of the pool but the share of non-English songs in
+it did not drop measurably.
+
+- Known problem: the genre tags say nothing about the language. Songs in Latin
+  script from other languages still get through, mostly Spanish and Portuguese
+  rock/metal bands, French and German artists, and Punjabi/Hindi hip-hop, when
+  they are tagged only with generic genres and their artist is in no other pool.
