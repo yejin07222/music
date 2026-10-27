@@ -1,0 +1,12 @@
+# Theme: white background, light-gray cards and inputs, navy accent.
+# (The fonts for the title and the HTML parts are set in app.py and results_table.py.)
+[theme]
+base = "light"
+primaryColor = "#3B5BDB"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F6F6F8"
+textColor = "#222222"
+borderColor = "#E5E5EA"
+showWidgetBorder = true
+baseRadius = "0.75rem"
+font = "Noto Sans KR:https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap, sans-serif"
