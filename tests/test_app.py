@@ -18,5 +18,5 @@ def test_country_dropdown_order():
     assert box.value == "South Korea"  # the key stays unchanged; only the label is Korean
     # the keys behind the labels still work: pick 영어권 and search a song
     at.text_input[0].set_value("Someone Like You").run()
-    at.selectbox[0].select("영어권").run()
+    at.selectbox[0].set_value("English-language").run()
     assert not at.exception and len(at.dataframe[0].value) == 10
