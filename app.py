@@ -8,6 +8,7 @@ import streamlit as st
 
 import media
 import results_table
+from countries import ALL_COUNTRIES
 from recommender import Recommender
 from online_lookup import LookupFailed, fetch_features, search_songs
 
@@ -18,6 +19,7 @@ MATCH = {"method": "euclid", "weighted": True}
 
 # Display names only; the keys must match countries.COUNTRY_GENRES.
 COUNTRY_LABELS = {
+    ALL_COUNTRIES: "전체",
     "Japan": "일본",
     "South Korea": "한국",
     "China (Mandarin)": "중국",
@@ -35,7 +37,7 @@ COUNTRY_LABELS = {
 }
 
 # Shown first in the country dropdown; the other countries follow in their usual order.
-COUNTRY_ORDER_FIRST = ["South Korea", "Japan", "English-language", "China (Mandarin)"]
+COUNTRY_ORDER_FIRST = [ALL_COUNTRIES, "South Korea", "Japan", "English-language", "China (Mandarin)"]
 
 # Features shown in the "why this song" chart: (column, Korean name).
 CHART_FEATURES = [

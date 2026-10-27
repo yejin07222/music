@@ -142,3 +142,24 @@ def test_artist_marks_are_applied(rec):
 def test_pool_sizes_after_reviews(rec):
     assert int(rec._country_mask["Japan"].sum()) == 2388
     assert int(rec._country_mask[ENGLISH_COUNTRY].sum()) == 11990
+
+
+def test_all_countries_pool(rec):
+    from countries import ALL_COUNTRIES
+
+    pools = list(rec._country_mask.values())
+    union = rec._pool(ALL_COUNTRIES)
+    assert len(pools) == 14 and int(union.sum()) == sum(int(m.sum()) for m in pools) == 31409  # no overlaps
+    # same exclusions: nothing excluded and nothing removed from every country is in the combined pool
+    excluded = set(pd.read_csv("data/excluded_tracks.csv")["track_id"])
+    assert not rec.df.track_id[union].isin(excluded).any()
+    d = rec.df
+    adele = d[(d.track_name == "Someone Like You") & (d.artists == "Adele")].iloc[0].track_id
+    kw = {"method": "euclid", "weighted": True, "style": True}
+    out = rec.recommend(adele, ALL_COUNTRIES, 10, **kw)
+    assert adele not in set(out.track_id) and len(out) == 10 and out.track_id.isin(d.track_id[union]).all()
+    # the best match over all countries is at least as good as the best within one country
+    best_all = rec.recommend(adele, ALL_COUNTRIES, 1, **kw).similarity.iloc[0]
+    assert all(best_all >= rec.recommend(adele, c, 1, **kw).similarity.iloc[0] - 1e-9 for c in ("Japan", "South Korea"))
+    mood = rec.recommend_from_mood({"valence": 0.8, "energy": 0.8}, ALL_COUNTRIES, 10, method="euclid", weighted=True)
+    assert len(mood) == 10

@@ -14,7 +14,7 @@ import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import StandardScaler
 
-from countries import COUNTRY_GENRES, ENGLISH_COUNTRY, ENGLISH_EXCLUDED_TAGS, ENGLISH_GENRES, all_country_genres, in_country
+from countries import ALL_COUNTRIES, COUNTRY_GENRES, ENGLISH_COUNTRY, ENGLISH_EXCLUDED_TAGS, ENGLISH_GENRES, all_country_genres, in_country
 
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")  # works from any cwd
 DATA_PATH = os.path.join(_DATA_DIR, "cleaned.csv")
@@ -110,6 +110,14 @@ class Recommender:
     def countries(self):
         return list(self._country_mask)
 
+    def _pool(self, country):
+        """Boolean mask of the songs of `country`; ALL_COUNTRIES is every pool combined."""
+        if country == ALL_COUNTRIES:
+            return np.any(list(self._country_mask.values()), axis=0)
+        if country not in self._country_mask:
+            raise ValueError(f"Unknown country: {country!r}")
+        return self._country_mask[country]
+
     def search(self, query, limit=20):
         """Songs whose title or artist contains `query` (case-insensitive),
         most popular first."""
@@ -134,14 +142,13 @@ class Recommender:
         style:    add STYLE_BONUS to candidates sharing a style (rock, dance, ...)
                   with the input song; `similarity` then includes the bonus.
         """
-        if country not in self._country_mask:
-            raise ValueError(f"Unknown country: {country!r}")
+        pool = self._pool(country)
         matches = self.df.index[self.df["track_id"] == track_id]
         if len(matches) == 0:
             raise ValueError(f"Unknown track_id: {track_id!r}")
         i = matches[0]
 
-        candidates = self._country_mask[country].copy()
+        candidates = pool.copy()
         candidates[i] = False  # never recommend the input song itself
         return self._rank(self.X[i], candidates, n, method, weighted, self._styles[i] if style else None)
 
@@ -152,14 +159,13 @@ class Recommender:
         "tempo": 140}). Features not given are set to the dataset average, so
         they do not pull the ranking either way.
         """
-        if country not in self._country_mask:
-            raise ValueError(f"Unknown country: {country!r}")
+        pool = self._pool(country)
         unknown = set(mood) - set(FEATURES)
         if unknown:
             raise ValueError(f"Unknown features: {sorted(unknown)}")
         raw = pd.DataFrame([{**dict(zip(FEATURES, self.scaler.mean_)), **mood}])
         target = self.scaler.transform(raw[FEATURES])[0]
-        return self._rank(target, self._country_mask[country], n, method, weighted)
+        return self._rank(target, pool, n, method, weighted)
 
     def _rank(self, target, candidates, n, method="cosine", weighted=False, styles=None):
         if method not in ("cosine", "euclid"):
@@ -191,7 +197,7 @@ def main():
     s.add_argument("query")
     r = sub.add_parser("recommend", help="recommend songs from a country")
     r.add_argument("query")
-    r.add_argument("country", choices=list(COUNTRY_GENRES) + [ENGLISH_COUNTRY])
+    r.add_argument("country", choices=list(COUNTRY_GENRES) + [ENGLISH_COUNTRY, ALL_COUNTRIES])
     r.add_argument("--pick", type=int, default=0, help="row number from the search results (default 0)")
     r.add_argument("-n", type=int, default=10)
     args = p.parse_args()

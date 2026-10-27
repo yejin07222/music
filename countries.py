@@ -31,6 +31,9 @@ def in_country(genres, country):
     return not genres.isdisjoint(own) and genres.isdisjoint(others)
 
 
+# Pseudo-country for "search every country pool at once" (shown as 전체 in the app).
+ALL_COUNTRIES = "All"
+
 # "English-speaking" is handled separately from COUNTRY_GENRES on purpose: its genres
 # (pop, rock, dance...) are generic and also appear on songs from other countries, so
 # they must not be used to exclude songs from those countries in in_country().

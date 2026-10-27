@@ -229,3 +229,42 @@ Not done: j-pop, j-idol, j-dance and anime artists were reviewed only through
 the artist list above; the other countries' pools (India, Iran, Turkey,
 Malaysia, China, Hong Kong...) were not reviewed. Files from Windows downloads
 (`*:Zone.Identifier`) are ignored by git.
+
+## 11. ReccoBeats recommendations (tested, not used)
+
+To see whether a "전체" option could find songs beyond the dataset, we tested
+ReccoBeats' recommendation endpoint (`/v1/track/recommendation`) with two seeds,
+without changing the app:
+
+- It works with a Spotify ID as the seed (dataset songs). An ISRC cannot be a
+  seed directly (HTTP 400); it first has to be turned into ReccoBeats' own ID
+  with `/audio-features?ids=<ISRC>` (Deezer songs, +0.4 s).
+- Up to 100 songs per call (`size` max 100), about 85-92 actually returned, and
+  a different random set each time (two calls overlap by only ~25%).
+- Their 9 audio features come from `/audio-features`, at most 40 ids per request
+  (3 requests for 90 songs). None were missing. A search takes about 2-3 s.
+  No API key; about 35 calls hit no rate limit (none is published).
+- Target values (energy, valence...) were accepted but had no effect on quality.
+
+Quality, using our weighted distance on the scaled features (lower = closer):
+
+| Seed | ReccoBeats recommendations (median) | Random dataset songs (median) | Closest recommendation | Our dataset's best 10 (median) |
+|---|---|---|---|---|
+| Someone Like You (Adele) | 4.80 | 4.96 | 1.57 | **0.59** |
+| Smells Like Teen Spirit (Nirvana) | 3.13 | 4.03 | 1.32 | **0.51** |
+
+The recommendations are barely closer in mood than random songs (Adele) or
+somewhat closer (Nirvana), and even the best of about 90 is 2-3 times farther
+than our worst top-10 match. They have no genre or country, and 12-14 of the
+~90 are already in the dataset. **Decision: not used.**
+
+## 12. "전체" (all countries)
+
+"전체" is the first item of the country dropdown and searches all 14 pools
+(13 countries + 영어권) combined: 31,409 songs. The pools do not overlap, so
+every song belongs to exactly one country. The same exclusions and the same
+matching (weighted Euclidean + style 0.2) apply, because the combined pool is
+simply the union of the finished pools (`Recommender._pool("All")`).
+The results table has no country column (one was tried and removed). 전체 is also
+the default selection of the dropdown. The album-cover column of the table is
+headed "앨범".

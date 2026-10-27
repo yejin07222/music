@@ -12,10 +12,10 @@ def test_country_dropdown_order():
     assert not at.exception
     box = at.selectbox[0]
     assert box.label == "나라 선택"
-    assert box.options[:4] == ["한국", "일본", "영어권", "중국"]
-    assert box.options[4:] == ["홍콩", "인도", "이란", "튀르키예", "말레이시아", "브라질", "프랑스어", "독일", "스웨덴", "스페인어"]
-    assert len(box.options) == len(COUNTRY_GENRES) + 1  # every country, English-language included
-    assert box.value == "South Korea"  # the key stays unchanged; only the label is Korean
+    assert box.options[:5] == ["전체", "한국", "일본", "영어권", "중국"]
+    assert box.options[5:] == ["홍콩", "인도", "이란", "튀르키예", "말레이시아", "브라질", "프랑스어", "독일", "스웨덴", "스페인어"]
+    assert len(box.options) == len(COUNTRY_GENRES) + 2  # every country, English-language and 전체 included
+    assert box.value == "All"  # the key stays unchanged; only the label is Korean
     # the keys behind the labels still work: pick 영어권 and search a song
     at.text_input[0].set_value("Someone Like You").run()
     at.selectbox[0].set_value("English-language").run()
@@ -80,3 +80,20 @@ def test_covers_or_players_failing_do_not_break_the_app():
     at = _search("Someone Like You", mock.patch.object(media, "covers", side_effect=RuntimeError("down")))
     html = _table_html(at)
     assert not at.exception and _headers(html) == ["순위", "제목", "가수", ""]  # no covers: that column is left out
+
+
+def test_all_countries_is_the_default_and_has_no_country_column():
+    from unittest import mock
+
+    import media
+
+    no_covers = mock.patch.object(media, "covers", return_value={})
+    at = _search("Someone Like You", no_covers)  # the default selection is 전체
+    assert not at.exception and at.selectbox[0].value == "All"
+    html = _table_html(at)
+    assert _headers(html) == ["순위", "제목", "가수", ""] and html.count('class="row"') == 10
+    assert "전체 음악" in [s.value for s in at.subheader][0]
+
+    with no_covers:
+        at.selectbox[0].set_value("South Korea").run()
+    assert not at.exception and _headers(_table_html(at)) == ["순위", "제목", "가수", ""]
