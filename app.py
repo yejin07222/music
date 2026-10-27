@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from recommender import Recommender
+from spotify_features import LookupFailed, extract_track_id, fetch_features
 
 N_RESULTS = 10
 
@@ -45,6 +46,42 @@ SERIES_COLORS = ["#2a78d6", "#eb6834"]  # blue = my song, orange = the result
 @st.cache_resource
 def load_recommender():
     return Recommender()
+
+
+LOOKUP_ERRORS = {
+    "timeout": "응답이 너무 늦어서 곡 정보를 가져오지 못했어요.",
+    "network": "곡 정보를 가져오는 중 연결에 문제가 있었어요.",
+    "blocked": "서비스가 요청을 받아주지 않았어요 (접근 거부).",
+    "rate_limit": "요청이 너무 많아 잠시 막혔어요. 조금 뒤에 다시 시도해 주세요.",
+    "not_found": "이 곡의 정보를 찾을 수 없어요.",
+    "bad_response": "서비스에서 예상하지 못한 응답이 왔어요.",
+}
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def lookup_features(track_id):
+    return fetch_features(track_id)  # failures raise and are therefore not cached
+
+
+def recommend_from_link(link, country):
+    """Recommend from a pasted Spotify link. Returns (results, features, name),
+    or None after showing a Korean message if anything goes wrong."""
+    track_id = extract_track_id(link)
+    if track_id is None:
+        st.error("Spotify 곡 링크가 아닌 것 같아요. 예: https://open.spotify.com/track/…  슬라이더로 분위기를 정해 보세요.")
+        return None
+    if (df["track_id"] == track_id).any():  # already in our data: no need to call the API
+        feats = df.loc[df["track_id"] == track_id, [c for c, _ in CHART_FEATURES]].iloc[0].to_dict()
+        st.success("이 곡은 이미 데이터에 있어요.")
+        return rec.recommend(track_id, country, N_RESULTS), feats, "내가 입력한 곡"
+    try:
+        with st.spinner("곡 정보를 가져오는 중…"):
+            features, title = lookup_features(track_id)
+    except LookupFailed as e:
+        st.error(f"{LOOKUP_ERRORS[e.code]} 대신 슬라이더로 분위기를 정해 보세요.")
+        return None
+    st.success(f"찾았어요: {title or track_id}")
+    return rec.recommend_from_mood(features, country, N_RESULTS), features, "내가 입력한 곡"
 
 
 def song_label(row):
@@ -111,18 +148,24 @@ if not query.strip():
 found = rec.search(query)
 if found.empty:
     st.warning(f"“{query}”에 해당하는 곡을 찾지 못했어요. 철자를 바꾸거나 제목 일부만 입력해 보세요.")
-    st.subheader("분위기를 직접 정해 볼까요?")
-    st.caption("곡을 찾지 못했을 때는 슬라이더로 원하는 분위기를 정해서 추천받을 수 있어요.")
-    mood = {
-        "valence": st.slider("밝기", 0.0, 1.0, 0.5, 0.05, help="낮을수록 어둡고 슬픈 느낌, 높을수록 밝고 행복한 느낌"),
-        "energy": st.slider("에너지", 0.0, 1.0, 0.5, 0.05, help="높을수록 강렬하고 시끄러운 느낌"),
-        "danceability": st.slider("댄스성", 0.0, 1.0, 0.5, 0.05, help="높을수록 춤추기 좋은 리듬"),
-        "acousticness": st.slider("어쿠스틱", 0.0, 1.0, 0.5, 0.05, help="높을수록 전자음 없이 악기 소리 중심"),
-        "tempo": st.slider("템포 (BPM)", 60, 200, 120, 5),
-    }
-    results = rec.recommend_from_mood(mood, country, N_RESULTS)
-    my_values = mood
-    my_name = "내가 정한 분위기"
+    link = st.text_input("곡이 없나요? Spotify 곡 링크를 붙여넣으세요", placeholder="https://open.spotify.com/track/…")
+    st.caption("※ 비공식 무료 서비스(ReccoBeats)를 이용해서 가끔 작동하지 않을 수 있어요.")
+    linked = recommend_from_link(link, country) if link.strip() else None
+    if linked:
+        results, my_values, my_name = linked
+    else:
+        st.subheader("분위기를 직접 정해 볼까요?")
+        st.caption("슬라이더로 원하는 분위기를 정해서 추천받을 수 있어요.")
+        mood = {
+            "valence": st.slider("밝기", 0.0, 1.0, 0.5, 0.05, help="낮을수록 어둡고 슬픈 느낌, 높을수록 밝고 행복한 느낌"),
+            "energy": st.slider("에너지", 0.0, 1.0, 0.5, 0.05, help="높을수록 강렬하고 시끄러운 느낌"),
+            "danceability": st.slider("댄스성", 0.0, 1.0, 0.5, 0.05, help="높을수록 춤추기 좋은 리듬"),
+            "acousticness": st.slider("어쿠스틱", 0.0, 1.0, 0.5, 0.05, help="높을수록 전자음 없이 악기 소리 중심"),
+            "tempo": st.slider("템포 (BPM)", 60, 200, 120, 5),
+        }
+        results = rec.recommend_from_mood(mood, country, N_RESULTS)
+        my_values = mood
+        my_name = "내가 정한 분위기"
 else:
     songs = {row.track_id: row for row in found.itertuples()}
     track_id = st.selectbox(
