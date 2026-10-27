@@ -43,7 +43,10 @@ def _get(url):
 
 
 def search_songs(query):
-    """Up to MAX_CHOICES Deezer results as [{"title", "artist", "isrc"}].
+    """Up to MAX_CHOICES Deezer results as [{"title", "artist", "isrc", "preview", "cover", "link"}].
+
+    `preview` (30 s mp3, signed and valid for only ~15 minutes), `cover` and `link`
+    (the track page on deezer.com) may be None.
 
     Results without an ISRC are skipped, as are repeats of the same ISRC.
     """
@@ -60,7 +63,12 @@ def search_songs(query):
             isrc = (item.get("isrc") or "").strip().upper()
             if not isrc or isrc in seen:
                 continue
-            songs.append({"title": item["title"], "artist": item["artist"]["name"], "isrc": isrc})
+            songs.append({
+                "title": item["title"], "artist": item["artist"]["name"], "isrc": isrc,
+                "preview": item.get("preview") or None,
+                "cover": (item.get("album") or {}).get("cover_medium") or None,
+                "link": item.get("link") or None,
+            })
             seen.add(isrc)
         except (KeyError, TypeError, AttributeError):
             continue

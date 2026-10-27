@@ -28,7 +28,7 @@ def test_search_skips_missing_isrc_and_repeats_and_caps_at_five():
     with mock.patch("urllib.request.urlopen", return_value=_response({"data": items})):
         songs = ol.search_songs("q")
     assert [s["isrc"] for s in songs] == [f"ISRC{i}" for i in range(5)]
-    assert songs[0] == {"title": "t0", "artist": "x", "isrc": "ISRC0"}
+    assert songs[0] == {"title": "t0", "artist": "x", "isrc": "ISRC0", "preview": None, "cover": None, "link": None}
 
 
 def test_search_no_usable_results():
@@ -90,3 +90,13 @@ def test_user_agent_and_timeout_are_sent():
             ol.search_songs("q")
     assert m.call_args.args[0].get_header("User-agent") == ol.USER_AGENT
     assert m.call_args.kwargs["timeout"] == ol.TIMEOUT_SECONDS
+
+
+def test_search_keeps_preview_and_cover():
+    item = {"title": "t", "artist": {"name": "a"}, "isrc": "x1", "preview": "https://cdnt-preview.dzcdn.net/p.mp3",
+            "album": {"cover_medium": "https://cdn-images.dzcdn.net/c.jpg"}}
+    bare = {"title": "u", "artist": {"name": "b"}, "isrc": "x2"}  # no preview, no album
+    with mock.patch("urllib.request.urlopen", return_value=_response({"data": [item, bare]})):
+        songs = ol.search_songs("q")
+    assert songs[0]["preview"].endswith("p.mp3") and songs[0]["cover"].endswith("c.jpg")
+    assert songs[1]["preview"] is None and songs[1]["cover"] is None
