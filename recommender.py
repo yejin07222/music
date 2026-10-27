@@ -13,9 +13,10 @@ from sklearn.preprocessing import StandardScaler
 
 from countries import COUNTRY_GENRES, in_country
 
-DATA_PATH = "data/cleaned.csv"
-EXCLUDED_PATH = "data/excluded_tracks.csv"  # hand-reviewed wrong-country songs
-INCLUDED_PATH = "data/included_tracks.csv"  # hand-added songs (track_id, country)
+_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")  # works from any cwd
+DATA_PATH = os.path.join(_DATA_DIR, "cleaned.csv")
+EXCLUDED_PATH = os.path.join(_DATA_DIR, "excluded_tracks.csv")  # hand-reviewed wrong-country songs
+INCLUDED_PATH = os.path.join(_DATA_DIR, "included_tracks.csv")  # hand-added songs (track_id, country)
 FEATURES = [
     "valence", "energy", "danceability", "acousticness", "tempo",
     "loudness", "speechiness", "instrumentalness", "liveness",
