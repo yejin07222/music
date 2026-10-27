@@ -7,25 +7,26 @@ import pandas as pd
 import streamlit as st
 
 from recommender import Recommender
-from spotify_features import LookupFailed, extract_track_id, fetch_features
+from online_lookup import LookupFailed, fetch_features, search_songs
 
 N_RESULTS = 10
 
 # Display names only; the keys must match countries.COUNTRY_GENRES.
 COUNTRY_LABELS = {
-    "Japan": "일본 (J-pop, J-rock, 아이돌, 애니…)",
-    "South Korea": "한국 (K-pop, 직접 검토함)",
-    "China (Mandarin)": "중국 (만다린 팝)",
-    "Hong Kong (Cantonese)": "홍콩 (칸토팝)",
-    "India": "인도 (인도 음악)",
-    "Iran": "이란 (이란 음악)",
-    "Turkey": "튀르키예 (터키 음악)",
-    "Malaysia": "말레이시아 (말레이 음악)",
-    "Brazil": "브라질 (브라질 음악, MPB, 삼바, 파고지…)",
-    "France": "프랑스 (프렌치 팝)",
-    "Germany": "독일 (독일 음악)",
-    "Sweden": "스웨덴 (스웨덴 음악)",
-    "Spanish-language": "스페인어권 (스페인어 팝, 라티노, 살사, 탱고…)",
+    "Japan": "일본",
+    "South Korea": "한국",
+    "China (Mandarin)": "중국",
+    "Hong Kong (Cantonese)": "홍콩",
+    "India": "인도",
+    "Iran": "이란",
+    "Turkey": "튀르키예",
+    "Malaysia": "말레이시아",
+    "Brazil": "브라질",
+    "France": "프랑스어",
+    "Germany": "독일",
+    "Sweden": "스웨덴",
+    "Spanish-language": "스페인어",
+    "English-language": "영어권",
 }
 
 # Features shown in the "why this song" chart: (column, Korean name).
@@ -53,35 +54,43 @@ LOOKUP_ERRORS = {
     "network": "곡 정보를 가져오는 중 연결에 문제가 있었어요.",
     "blocked": "서비스가 요청을 받아주지 않았어요 (접근 거부).",
     "rate_limit": "요청이 너무 많아 잠시 막혔어요. 조금 뒤에 다시 시도해 주세요.",
-    "not_found": "이 곡의 정보를 찾을 수 없어요.",
+    "not_found": "이 곡의 분위기 정보를 찾을 수 없어요.",
+    "no_results": "온라인에서도 이 곡을 찾지 못했어요.",
     "bad_response": "서비스에서 예상하지 못한 응답이 왔어요.",
 }
 
 
+# Failures raise and are therefore not cached.
 @st.cache_data(ttl=3600, show_spinner=False)
-def lookup_features(track_id):
-    return fetch_features(track_id)  # failures raise and are therefore not cached
+def online_search(query):
+    return search_songs(query)
 
 
-def recommend_from_link(link, country):
-    """Recommend from a pasted Spotify link. Returns (results, features, name),
-    or None after showing a Korean message if anything goes wrong."""
-    track_id = extract_track_id(link)
-    if track_id is None:
-        st.error("Spotify 곡 링크가 아닌 것 같아요. 예: https://open.spotify.com/track/…  슬라이더로 분위기를 정해 보세요.")
-        return None
-    if (df["track_id"] == track_id).any():  # already in our data: no need to call the API
-        feats = df.loc[df["track_id"] == track_id, [c for c, _ in CHART_FEATURES]].iloc[0].to_dict()
-        st.success("이 곡은 이미 데이터에 있어요.")
-        return rec.recommend(track_id, country, N_RESULTS), feats, "내가 입력한 곡"
+@st.cache_data(ttl=3600, show_spinner=False)
+def online_features(isrc):
+    return fetch_features(isrc)
+
+
+def recommend_from_online(query, country):
+    """For a song that is not in the dataset: pick it from a Deezer search, get its
+    audio features and recommend. Returns (results, features, name), or None after
+    showing a Korean message if anything goes wrong."""
     try:
-        with st.spinner("곡 정보를 가져오는 중…"):
-            features, title = lookup_features(track_id)
+        with st.spinner("온라인에서 곡을 찾는 중…"):
+            choices = online_search(query)
+        picked = st.selectbox(
+            f"어떤 곡인가요? ({len(choices)}곡 검색됨)",
+            range(len(choices)),
+            format_func=lambda i: f"{choices[i]['title']} - {choices[i]['artist']}",
+        )
+        with st.spinner("곡의 분위기를 분석하는 중…"):
+            features, spotify_id = online_features(choices[picked]["isrc"])
     except LookupFailed as e:
         st.error(f"{LOOKUP_ERRORS[e.code]} 대신 슬라이더로 분위기를 정해 보세요.")
         return None
-    st.success(f"찾았어요: {title or track_id}")
-    return rec.recommend_from_mood(features, country, N_RESULTS), features, "내가 입력한 곡"
+    if spotify_id and (df["track_id"] == spotify_id).any():  # it was in our data after all
+        return rec.recommend(spotify_id, country, N_RESULTS), features, "내가 고른 곡"
+    return rec.recommend_from_mood(features, country, N_RESULTS), features, "내가 고른 곡"
 
 
 def song_label(row):
@@ -130,16 +139,16 @@ def comparison_chart(mine, other, mine_name, other_name):
     )
 
 
-st.set_page_config(page_title="무드 매치", page_icon="🎧")
-st.title("🎧 무드 매치")
-st.write("좋아하는 노래와 분위기가 비슷한 곡을, 다른 나라 음악에서 찾아드려요.")
+st.set_page_config(page_title="Find Similar Songs")
+st.title("Find Similar Songs")
+st.write("좋아하는 노래 하나로, 다른 나라의 비슷한 노래를 만나보세요.")
 
 rec = load_recommender()
 df = rec.df
 bounds = {c: (df[c].quantile(0.01), df[c].quantile(0.99)) for c in RESCALED}
 
-query = st.text_input("노래 제목이나 가수를 검색하세요", placeholder="예: Someone Like You")
-country = st.selectbox("어느 나라 음악에서 찾을까요?", rec.countries, format_func=COUNTRY_LABELS.get)
+query = st.text_input("노래 제목이나 가수 이름", placeholder="예: Someone Like You")
+country = st.selectbox("나라 선택", rec.countries, format_func=COUNTRY_LABELS.get)
 
 if not query.strip():
     st.info("노래 제목이나 가수 이름을 입력하면 시작할 수 있어요.")
@@ -147,12 +156,11 @@ if not query.strip():
 
 found = rec.search(query)
 if found.empty:
-    st.warning(f"“{query}”에 해당하는 곡을 찾지 못했어요. 철자를 바꾸거나 제목 일부만 입력해 보세요.")
-    link = st.text_input("곡이 없나요? Spotify 곡 링크를 붙여넣으세요", placeholder="https://open.spotify.com/track/…")
-    st.caption("※ 비공식 무료 서비스(ReccoBeats)를 이용해서 가끔 작동하지 않을 수 있어요.")
-    linked = recommend_from_link(link, country) if link.strip() else None
-    if linked:
-        results, my_values, my_name = linked
+    st.warning(f"“{query}”는 데이터에 없는 곡이에요. 온라인에서 찾아볼게요.")
+    st.caption("※ 데이터에 없는 곡은 비공식 무료 서비스(Deezer, ReccoBeats)로 찾기 때문에 가끔 작동하지 않을 수 있어요.")
+    online = recommend_from_online(query, country)
+    if online:
+        results, my_values, my_name = online
     else:
         st.subheader("분위기를 직접 정해 볼까요?")
         st.caption("슬라이더로 원하는 분위기를 정해서 추천받을 수 있어요.")
@@ -177,7 +185,7 @@ else:
     my_values = df.loc[df["track_id"] == track_id, [c for c, _ in CHART_FEATURES]].iloc[0].to_dict()
     my_name = "내가 고른 곡"
 
-country_name = COUNTRY_LABELS[country].split(" (")[0]
+country_name = COUNTRY_LABELS[country]
 st.subheader(f"{country_name} 음악 중 분위기가 비슷한 곡")
 if results.empty:
     st.warning(f"{country_name}에서 추천할 수 있는 곡이 없어요.")
