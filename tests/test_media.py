@@ -94,6 +94,59 @@ def test_listen_links_encode_special_characters_and_survive_odd_input():
     assert media.listen_links("", "", track_id="bad id") == []
 
 
+def _deezer(items):
+    resp = mock.MagicMock()
+    resp.__enter__.return_value = io.BytesIO(json.dumps({"data": items}).encode())
+    return resp
+
+
+def _item(title, artist, cover="https://cdn-images.dzcdn.net/images/cover/abc/250x250.jpg"):
+    return {"title": title, "artist": {"name": artist}, "album": {"cover_medium": cover}}
+
+
+def test_deezer_cover_fallback_needs_artist_and_title_to_match():
+    ok = _deezer([_item("Solo (Reprise)", "Frank Ocean", "https://cdn-images.dzcdn.net/other.jpg"),
+                  _item("Solo", "Frank Ocean"), _item("Solo", "Someone Else", "https://cdn-images.dzcdn.net/wrong.jpg")])
+    with mock.patch("urllib.request.urlopen", return_value=ok) as m:
+        assert media.fetch_cover_from_deezer("Frank Ocean;Someone", "Solo") == "https://cdn-images.dzcdn.net/other.jpg"
+    assert m.call_args.args[0].get_header("User-agent") == media.USER_AGENT and m.call_args.kwargs["timeout"] == media.COVER_TIMEOUT_SECONDS
+    for items in ([_item("Solo", "Someone Else")], [_item("Another Song", "Frank Ocean")], [], [_item("Solo", "Frank Ocean", "https://evil.example.com/x.jpg")]):
+        with mock.patch("urllib.request.urlopen", return_value=_deezer(items)):
+            assert media.fetch_cover_from_deezer("Frank Ocean", "Solo") is None
+    for exc in (TimeoutError(), OSError("down"), ValueError("bad")):
+        with mock.patch("urllib.request.urlopen", side_effect=exc):
+            assert media.fetch_cover_from_deezer("Frank Ocean", "Solo") is None
+    assert media.fetch_cover_from_deezer("", "Solo") is None and media.fetch_cover_from_deezer("A", "") is None
+
+
+def test_covers_fall_back_to_deezer_only_when_info_is_given():
+    media._cover_cache.clear()
+    with mock.patch.object(media, "fetch_cover", return_value=None), \
+            mock.patch.object(media, "fetch_cover_from_deezer", return_value="https://cdn-images.dzcdn.net/x.jpg") as dz:
+        assert media.covers(["a" * 22])["a" * 22] is None and not dz.called  # no info: no fallback
+        media._cover_cache.clear()
+        assert media.covers(["b" * 22], info={"b" * 22: ("Frank Ocean", "Solo")}) == {"b" * 22: "https://cdn-images.dzcdn.net/x.jpg"}
+        dz.assert_called_once_with("Frank Ocean", "Solo")
+    media._cover_cache.clear()
+
+
+def test_failed_cover_lookups_are_retried_later_but_found_ones_are_kept():
+    media._cover_cache.clear()
+    clock = [1000.0]
+    now = lambda: clock[0]
+    answers = {"f" * 22: None, "g" * 22: "https://i.scdn.co/g"}
+    with mock.patch.object(media, "fetch_cover", side_effect=lambda i: answers[i]) as m:
+        media.covers(list(answers), now=now)
+        assert m.call_count == 2
+        media.covers(list(answers), now=now)
+        assert m.call_count == 2  # both remembered
+        clock[0] += media.COVER_RETRY_SECONDS + 1
+        answers["f" * 22] = "https://i.scdn.co/f"  # the service works again
+        out = media.covers(list(answers), now=now)
+        assert m.call_count == 3 and out["f" * 22] == "https://i.scdn.co/f" and out["g" * 22] == "https://i.scdn.co/g"
+    media._cover_cache.clear()
+
+
 def test_links_markdown():
     out = media.links_markdown([("Spotify", "https://open.spotify.com/track/" + ID), ("YouTube", "https://a.com/x(1) y")])
     assert out == f"듣기: [Spotify](https://open.spotify.com/track/{ID}) · [YouTube](https://a.com/x%281%29%20y)"

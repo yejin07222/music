@@ -8,6 +8,7 @@ import html
 import json
 import re
 import threading
+import time
 import urllib.parse
 import urllib.request
 
@@ -73,24 +74,59 @@ def fetch_cover(track_id):
         return None
 
 
-_cover_cache, _cover_lock, _CACHE_LIMIT = {}, threading.Lock(), 5000
+DEEZER_SEARCH = "https://api.deezer.com/search?limit=5&q="
+COVER_RETRY_SECONDS = 600  # a failed lookup is tried again after this long; a found cover is kept for good
 
 
-def covers(track_ids, max_workers=10):
-    """{track_id: cover_url or None}; looks the missing ones up in parallel and remembers
-    every answer (including failures) until the process restarts."""
+def _norm(text):
+    return re.sub(r"\s+", " ", (text or "").casefold()).strip()
+
+
+def fetch_cover_from_deezer(artists, title):
+    """Fallback for tracks Spotify has no thumbnail for: the cover of the Deezer search result whose artist
+    and title both match (so a wrong cover is never used), or None."""
+    first = _norm((artists or "").split(";")[0])
+    wanted = _norm(title)
+    if not first or not wanted:
+        return None
+    url = DEEZER_SEARCH + urllib.parse.quote_plus(f"{first} {wanted}")
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=COVER_TIMEOUT_SECONDS) as resp:
+            items = json.load(resp).get("data", [])
+        for item in items:
+            artist, name = _norm((item.get("artist") or {}).get("name")), _norm(item.get("title"))
+            if artist == first and (name == wanted or name.startswith(wanted) or wanted.startswith(name)):
+                return _https_url_on((item.get("album") or {}).get("cover_medium"), _DEEZER_HOSTS)
+    except Exception:  # any network, HTTP or parsing problem just means "no cover"
+        return None
+    return None
+
+
+def _find_cover(track_id, info):
+    return fetch_cover(track_id) or (fetch_cover_from_deezer(*info) if info else None)
+
+
+_cover_cache, _cover_lock, _CACHE_LIMIT = {}, threading.Lock(), 5000  # id -> (url or None, retry_at or None)
+
+
+def covers(track_ids, info=None, max_workers=10, now=time.monotonic):
+    """{track_id: cover_url or None}. Missing ones are looked up in parallel (Spotify oEmbed first, then
+    Deezer when `info` = {track_id: (artists, title)} is given) and remembered: a found cover for good, a
+    failure for COVER_RETRY_SECONDS."""
+    info = info or {}
     ids = list(dict.fromkeys(track_ids))
     with _cover_lock:
-        todo = [i for i in ids if i not in _cover_cache]
+        todo = [i for i in ids if i not in _cover_cache or (_cover_cache[i][0] is None and _cover_cache[i][1] <= now())]
     if todo:
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_workers, len(todo))) as pool:
-            found = dict(zip(todo, pool.map(fetch_cover, todo)))
+            found = dict(zip(todo, pool.map(lambda i: _find_cover(i, info.get(i)), todo)))
         with _cover_lock:
             if len(_cover_cache) + len(found) > _CACHE_LIMIT:
                 _cover_cache.clear()
-            _cover_cache.update(found)
+            _cover_cache.update({i: (url, None if url else now() + COVER_RETRY_SECONDS) for i, url in found.items()})
     with _cover_lock:
-        return {i: _cover_cache.get(i) for i in ids}
+        return {i: _cover_cache[i][0] for i in ids}
 
 
 # --- listen links (plain links, no API) --------------------------------------------------
