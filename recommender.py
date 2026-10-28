@@ -21,6 +21,7 @@ DATA_PATH = os.path.join(_DATA_DIR, "cleaned.csv")
 EXCLUDED_PATH = os.path.join(_DATA_DIR, "excluded_tracks.csv")  # hand-reviewed wrong-country songs
 INCLUDED_PATH = os.path.join(_DATA_DIR, "included_tracks.csv")  # hand-added songs (track_id, country)
 REMOVED_PATH = os.path.join(_DATA_DIR, "removed_from_country.csv")  # hand-removed from one country (track_id, country)
+EXTRA_PATH = os.path.join(_DATA_DIR, "korea_extra.csv")  # more Korean songs (scripts/collect_korea_extra.py)
 FEATURES = [
     "valence", "energy", "danceability", "acousticness", "tempo",
     "loudness", "speechiness", "instrumentalness", "liveness",
@@ -37,7 +38,8 @@ FEATURE_WEIGHTS = {
 STYLE_FAMILIES = {
     "rock": {"rock", "alt-rock", "hard-rock", "punk-rock", "punk", "grunge", "psych-rock", "rock-n-roll",
              "j-rock", "emo", "goth", "metal", "heavy-metal", "metalcore", "hardcore", "rockabilly", "guitar"},
-    "ballad": {"sad", "romance", "singer-songwriter", "songwriter", "piano"},
+    "ballad": {"ballad", "sad", "romance", "singer-songwriter", "songwriter", "piano"},
+    "indie": {"indie", "indie-pop"},
     "hip-hop": {"hip-hop", "trip-hop"},
     "dance": {"dance", "edm", "electro", "house", "deep-house", "progressive-house", "chicago-house", "club",
               "techno", "trance", "disco", "party", "j-dance", "electronic"},
@@ -60,8 +62,19 @@ def has_non_latin(text):
 
 class Recommender:
     def __init__(self, path=DATA_PATH, excluded_path=EXCLUDED_PATH, included_path=INCLUDED_PATH,
-                 removed_path=REMOVED_PATH):
-        self.df = pd.read_csv(path)
+                 removed_path=REMOVED_PATH, extra_path=EXTRA_PATH):
+        base = pd.read_csv(path)
+        # Extra Korean songs (collected from MusicBrainz/Deezer/ReccoBeats) join the dataset; all of them belong to
+        # South Korea. extra_path=None (or a missing file) gives the plain dataset.
+        self._extra = np.zeros(len(base), dtype=bool)
+        if extra_path and os.path.exists(extra_path):
+            extra = pd.read_csv(extra_path)
+            extra = extra[~extra["track_id"].isin(set(base["track_id"]))].drop_duplicates("track_id")
+            self.df = pd.concat([base, extra[list(base.columns)]], ignore_index=True)
+            self._extra = np.r_[self._extra, np.ones(len(extra), dtype=bool)]
+        else:
+            self.df = base
+        self.n_extra = int(self._extra.sum())
         excluded = set()
         if os.path.exists(excluded_path):
             excluded = set(pd.read_csv(excluded_path)["track_id"])
@@ -74,9 +87,9 @@ class Recommender:
         if os.path.exists(removed_path):
             for row in pd.read_csv(removed_path).itertuples():
                 removed.setdefault(row.country, set()).add(row.track_id)
-        # Scale on the full dataset so any input song (any genre) lands in the
-        # same feature space as the candidates.
-        self.scaler = StandardScaler().fit(self.df[FEATURES])
+        # Scale on the original dataset (not the extra songs, so existing results do not shift) so any input
+        # song (any genre) lands in the same feature space as the candidates.
+        self.scaler = StandardScaler().fit(base[FEATURES])
         self._weights = pd.Series(FEATURE_WEIGHTS)[FEATURES].to_numpy()
         self.X = self.scaler.transform(self.df[FEATURES])
         genre_sets = self.df["genres"].str.split(";").apply(set)
@@ -90,6 +103,10 @@ class Recommender:
             ) & not_excluded & ~self.df["track_id"].isin(removed.get(country, ())).to_numpy()
             for country in COUNTRY_GENRES
         }
+        # the extra songs are all Korean (they have to be listed in the exclusion/removal files to leave)
+        self._country_mask["South Korea"] = self._country_mask["South Korea"] | (
+            self._extra & not_excluded & ~self.df["track_id"].isin(removed.get("South Korea", ())).to_numpy()
+        )
         # English-language (not reviewed by hand): an English-ish genre, no other country's
         # genre and none of ENGLISH_EXCLUDED_TAGS, only Latin letters in the title and artist,
         # and no artist who also appears in another country's pool.
@@ -103,6 +120,7 @@ class Recommender:
             & latin_only.to_numpy()
             & ~foreign_artist.to_numpy()
             & not_excluded
+            & ~self._extra  # the extra songs are Korean, not English
         ) | (self.df["track_id"].isin(included.get(ENGLISH_COUNTRY, ())).to_numpy() & not_excluded)
         self._country_mask[ENGLISH_COUNTRY] &= ~self.df["track_id"].isin(removed.get(ENGLISH_COUNTRY, ())).to_numpy()
 

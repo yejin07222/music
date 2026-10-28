@@ -7,7 +7,8 @@ from recommender import Recommender, has_non_latin
 
 @pytest.fixture(scope="module")
 def rec():
-    return Recommender()
+    # the reviewed dataset without the extra Korean songs: these tests describe the numbers of the dataset itself
+    return Recommender(extra_path=None)
 
 
 def test_has_non_latin():
