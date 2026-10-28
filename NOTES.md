@@ -268,3 +268,119 @@ simply the union of the finished pools (`Recommender._pool("All")`).
 The results table has no country column (one was tried and removed). 전체 is also
 the default selection of the dropdown. The album-cover column of the table is
 headed "앨범".
+
+## 13. Many more Korean songs (MusicBrainz + Deezer + ReccoBeats)
+
+The dataset has only about 400 Korean songs, almost all K-pop (section 4). To get a wider mix
+(indie, hip-hop, rock bands, ballad, R&B, folk, lesser-known artists), `scripts/collect_korea_extra.py`
+collects songs from three free services without any key and writes **`data/korea_extra.csv`**:
+
+1. **MusicBrainz**: every artist registered in South Korea with the tags indie, hip hop, rock, ballad,
+   r&b or folk (470 artists; 1 request per second, User-Agent with the project URL).
+2. **Deezer**: the artist by exact name -> up to 5 albums -> tracks with ISRC. Also the artists of
+   Deezer playlists ("korean indie", "한국 인디", "korean hip hop", ...); a playlist artist is kept
+   only if MusicBrainz confirms South Korea or the name has Hangul. Related artists were not used
+   (they drift towards K-pop and foreign artists).
+3. **ReccoBeats**: the 9 audio features and the Spotify id (the app needs it for the player and
+   covers) for each ISRC.
+
+Songs already in the dataset (125), instrumental versions, songs with no features or tempo 0 and
+duplicates are skipped. The `genres` column is built from the MusicBrainz tags (or the playlist
+query) with the dataset's genre names: rock, ballad, hip-hop, r-n-b, folk, indie, ... so the style
+bonus works for Korea. `STYLE_FAMILIES` got the tag `ballad` and a new style `indie`.
+`review/korea_extra_artists.csv` lists every artist (song count, genres, MusicBrainz country,
+example title, how the artist was verified, share of Korean ISRCs) to check by hand;
+`review/korea_extra_rejected_artists.csv` lists the artists that were left out and why.
+
+Result: **14,555 songs by 640 artists** (MusicBrainz 322 artists / 8,005 songs, playlists 318 /
+6,550). Main style of the songs: indie 27%, hip-hop 23%, ballad 20%, rock 15%, R&B 9%, folk 6%.
+
+How the app uses them (`Recommender`, parameter `extra_path`): the songs join the dataset and all
+belong to **한국** (and so to 전체), never to 영어권. The scaler is still fitted on the original
+dataset, so results for the other countries do not change. `excluded_tracks.csv` and
+`removed_from_country.csv` still apply to them. Pool sizes: 한국 400 -> **14,955**, 전체 31,409 ->
+**45,963**, 영어권 11,990 -> 11,989 (one song lost because its artist is now in the Korean pool).
+Genre tags in the 한국 pool: hip-hop 28%, indie 27%, ballad 23%, rock 21%, r-n-b 19%, k-pop 17%,
+pop 11%, folk 9%, singer-songwriter 6% (a song can have several).
+
+Before / after, top 10 (Euclid + weights + style 0.2):
+
+| Input -> 한국 | Before | After |
+|---|---|---|
+| Adele "Someone Like You" (british;soul) | SOYOU, LeeHi, TAEYEON, BIBI, Punch... (all K-pop) | NIve, Naul, Brown Eyes, Yerin Baek, LambC, Brown Eyed Soul... (Korean R&B/soul) |
+| Nirvana "Smells Like Teen Spirit" (rock) | I-LAND, GFRIEND, TXT, BTS x5, Stray Kids | TAEMIN, Boohwal, Sister's Barbershop x2, Shin Hae Chul, SEOTAIJI, youjeen, Xdinary Heroes... (Korean rock) |
+
+Both new lists have no song in common with the old ones: all 10 results are new songs.
+
+**The namesake problem.** Deezer often has several artists with the same name, and the first
+version of the collection took the one with the most fans: it put the American band KISS
+("Beth"), the Danish group Kandis and "Elo" (ELO) into the Korean pool. The check now (see the
+top of the script): an artist with Hangul in its name or a song title is accepted; every other
+artist is compared with MusicBrainz's own links: its Deezer page must be the artist we used (if
+MusicBrainz links another Deezer page we switch to it, 32 artists), or its Spotify artist must be
+the one ReccoBeats reports for the songs. If they point elsewhere the artist is left out. If
+MusicBrainz has no usable link, an artist is accepted when most of its ISRCs start with the
+country code KR (songs from Korean labels), otherwise a unique name is kept and an ambiguous one
+is left out. Outcome for the 865 artists checked: 397 Hangul, 200 Deezer link, 74 Spotify link,
+46 Korean ISRCs, 49 unique name without any link, 32 switched = 798 accepted; **67 artists
+(2,509 songs) left out** (47 ambiguous name without any evidence, 20 whose Spotify artist does not
+match). 640 of the accepted artists have songs in the file (the others had no songs with features).
+
+Limits: 26 artists in the file are kept only because their name is unique on Deezer and
+MusicBrainz has no link (e.g. "Suu" has a Spanish song, so some of these are probably wrong); the Korean ISRC share
+is only positive evidence (real indie artists with a foreign distributor have other codes, so
+some real artists such as JAMBINAI are among the left-out ones); a wrong link in MusicBrainz
+would pass the check. The genre tags come from MusicBrainz and are loose (K-pop groups tagged
+`rock` or `hip-hop`). Only 27% of the songs have Hangul in the title or artist, because many
+Korean artists use English names. **These songs were not reviewed by hand** (unlike the 400
+dataset songs and the Japan and 영어권 reviews), only their artists can be checked in the review
+file; the app's footer still says that Korea was reviewed by hand.
+
+Rerun: `python scripts/collect_korea_extra.py` (options `--max-albums`, `--limit-artists`,
+`--no-playlists`). Every network answer is cached in `scripts/.cache/korea_extra/` (not committed),
+so a rerun takes seconds and an interrupted run continues. The first full run took about
+1.5 hours (the ReccoBeats features for 21,000 ISRCs and the MusicBrainz checks are the slow
+parts, because of the 1 request per second limit and some rate limiting). To remove an artist or a
+song, add the track ids to `data/excluded_tracks.csv`.
+
+## 14. Hand review of the extra Korean artists
+
+`review/korea_artist_review.csv` holds the decisions made by hand for the extra songs of section 13
+(artist, list, decision, reason). `scripts/apply_korea_review.py` applies them to
+`data/korea_extra.csv` (run it after `collect_korea_extra.py`; it is safe to run twice):
+
+- `remove` (12 artists, 294 songs): dropped. Foreign namesakes such as Suu, Babo, Girls 96, Rose.
+- `check`, kept list (30 artists): kept only if most songs are clearly Korean (a KR ISRC, Hangul in the title or
+  artist, or a featured artist with a Hangul name). **29 failed (502 songs), 1 passed** (Girls On Top, 5 songs).
+  The failed ones are mostly English-titled indie acts released through foreign distributors (Dept, Nogymx,
+  Lunar Isles, Black String, Nokdu...), so the rule cannot tell them from foreign namesakes.
+- `rescue` and `check`, rejected list (60 artists): the Korean Deezer page is searched under the Hangul names
+  (MusicBrainz aliases plus `review/korea_artist_korean_names.csv`) and the name; every exact-name page (up to 8)
+  is looked at; the best one is used if most of its songs, and most of the songs that end up in the file, have a KR
+  ISRC or a Hangul title. **15 rescued (205 songs)**: Aleph, Amin, B JYUN., Gemini, Tei, Vibe, Zayvo, 김기쁨 (Lunch),
+  도리 (DORI), 빈센트블루, 지아, 최성원, 플레이백, 후이, 희주. **42 stay unverified** (nothing added): 13 with no page
+  under those names, 23 with a page that is not Korean enough, 5 whose Korean page is real but has no new songs
+  with features (Kim Seungmin, Park Hye Kyoung, Suzy, Jay B, Rohann), and Jerry K (page 69% Korean, but only 38% of
+  its songs with features).
+- `keep` (Yuta, LISA, YUQI: members of K-pop groups), `keep_out` (KISS, Kandis), `already_in`: nothing.
+- **Explicit overrides** (`review/korea_artist_overrides.csv`, applied instead of the rule for the artists named):
+  - **JAMBINAI**, mode `page`: all songs of the real band page (Deezer id 3720001). Its albums are on a UK label
+    (Bella Union), so the ISRCs start with `GB` and the rule rejected it. **21 songs** added (30 candidates minus
+    instrumental versions, duplicates and songs without features). The tiny 잠비나이 page is no longer used.
+  - **Exhibition (전람회)**, mode `kr_isrc`: from its two English-named Deezer pages only the songs with a KR ISRC:
+    **18 songs** (27 candidates).
+  - **Toy (토이)**, mode `kr_isrc`: none of its 8 English-named pages has a song with a KR ISRC, so **nothing**
+    was added (the 토이 page has no songs at all).
+
+Numbers: the file went from 14,555 songs / 640 artists (section 13) to **14,003 songs by 615 artists**. 한국 is
+400 + 14,003 = **14,403 songs** (706 artists counting featured artists, 673 first-listed), 전체 45,411, 영어권
+11,989. Main style of the extra songs: indie 26%, hip-hop 22%, ballad 20%, rock 15%, R&B 10%, folk 6%.
+Adele -> 한국: 9 of the 10 songs are the same as before the review, Vibe (a rescued R&B duo) enters at #7;
+Nirvana -> 한국: unchanged (all 10 the same). The overrides did not change either list.
+
+Things the rule cannot see: real artists with foreign distributors fail it (that is why JAMBINAI needed an
+override; Dept, Nogymx, Lunar Isles and Black String were dropped by it). A rescued page with only 1-5 songs
+(지아, 후이, 희주, 빈센트블루) is found by name only, so it is worth a glance in `review/korea_extra_artists.csv`
+(the `identity_check` column says which page was used). `review/korea_extra_rejected_artists.csv` lists the
+50 artists that are still left out. The song counts in the app are computed (the picker shows "N곡 검색됨");
+no text in the app contains a fixed number of songs.
