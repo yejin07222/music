@@ -1,0 +1,113 @@
+artist,list,decision,reason
+Suu,kept,remove,songs are a foreign namesake or artist is not Korean (Spanish/Portuguese/French/Finnish/Zulu/Chinese/Japanese titles)
+Girls 96,kept,remove,songs are a foreign namesake or artist is not Korean (Spanish/Portuguese/French/Finnish/Zulu/Chinese/Japanese titles)
+VMC,kept,remove,songs are a foreign namesake or artist is not Korean (Spanish/Portuguese/French/Finnish/Zulu/Chinese/Japanese titles)
+Rose,kept,remove,songs are a foreign namesake or artist is not Korean (Spanish/Portuguese/French/Finnish/Zulu/Chinese/Japanese titles)
+Huckleberry Finn,kept,remove,songs are a foreign namesake or artist is not Korean (Spanish/Portuguese/French/Finnish/Zulu/Chinese/Japanese titles)
+Babo,kept,remove,songs are a foreign namesake or artist is not Korean (Spanish/Portuguese/French/Finnish/Zulu/Chinese/Japanese titles)
+Chang Ho Chirl,kept,remove,songs are a foreign namesake or artist is not Korean (Spanish/Portuguese/French/Finnish/Zulu/Chinese/Japanese titles)
+Wax,kept,remove,songs are a foreign namesake or artist is not Korean (Spanish/Portuguese/French/Finnish/Zulu/Chinese/Japanese titles)
+Chio,kept,remove,songs are a foreign namesake or artist is not Korean (Spanish/Portuguese/French/Finnish/Zulu/Chinese/Japanese titles)
+aiai,kept,remove,songs are a foreign namesake or artist is not Korean (Spanish/Portuguese/French/Finnish/Zulu/Chinese/Japanese titles)
+Jackson Wang,kept,remove,songs are a foreign namesake or artist is not Korean (Spanish/Portuguese/French/Finnish/Zulu/Chinese/Japanese titles)
+XG,kept,remove,songs are a foreign namesake or artist is not Korean (Spanish/Portuguese/French/Finnish/Zulu/Chinese/Japanese titles)
+Black String,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Hail,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Monogram,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Girls On Top,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Advanced,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+FISTBUMP,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Suen,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Dept,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Nogymx,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Lunar Isles,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Su Lee,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Park Bird,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Blurred Figures,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Frad,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Jing3,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+eldlofi,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Scorch,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+oddfish,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Lifeboat,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+sunday museum,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+OoOo,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+homezone,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+JazzyHan,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Leenzy,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Arkitekture,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Kennyoung,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Ki-Jung,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Bibi,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Big Phony,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Nokdu,kept,check,"weak evidence (KR ISRC share low, foreign-looking example title, or lo-fi producer name); keep only if songs are clearly by the Korean artist"
+Yuta,kept,keep,K-pop group member (counted as Korean K-pop)
+LISA,kept,keep,K-pop group member (counted as Korean K-pop)
+YUQI,kept,keep,K-pop group member (counted as Korean K-pop)
+JAMBINAI,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Cho PD,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Jerry K,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Kim Seungmin,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Park Hye Kyoung,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Roller Coaster,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Jeon In Kwon,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Dead Buttons,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Choi Sung-Won,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Zia,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Tei,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Toy,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Exhibition,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+HeeJu,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Vibe,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Vincent Blue,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Hui,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+XXX,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Suzy,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Beast,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Chancellor,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+GEMINI,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+WOOSUNG,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Elo,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Jay B,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+B JYUN,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Rohann,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+LNGSHOT,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Kasper,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Andy,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Uptown,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+G2,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Freestyle,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Dbo,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Leo,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Mono,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+H2O,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+Sky,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+RYU,rejected,rescue,"real Korean artist; Deezer page was a foreign namesake, find the Korean page"
+About,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Mrch,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+John Hyde,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+JP,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Mixx,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+16,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Pearl,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Wednesday,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Unchained,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+rp,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+The Fix,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Sweet Revenge,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Crow,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Sotk,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Lunch,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Aleph,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+DORI,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Zayvo,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Playback,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Amin,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+Gallant,rejected,check,may be Korean (came from Korean playlists) but name is generic; rescue only if a Korean Deezer page is found
+KISS,rejected,keep_out,foreign artist
+Kandis,rejected,keep_out,foreign artist
+Light & Salt,rejected,already_in,already in kept list under another spelling
+Lacuna,rejected,already_in,already in kept list under another spelling
+SURL,rejected,already_in,already in kept list under another spelling
+Miso,rejected,already_in,already in kept list under another spelling
+I.m,rejected,already_in,already in kept list under another spelling
