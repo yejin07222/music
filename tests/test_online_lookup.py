@@ -215,3 +215,39 @@ def test_search_online_gives_up_on_slow_lookups_after_the_time_limit():
     with mock.patch.object(ol, "SEARCH_TIMEOUT_SECONDS", 0.2), mock.patch("urllib.request.urlopen", side_effect=fake):
         songs = ol.search_online("q")
     assert [s["id"] for s in songs] == [1] and time.monotonic() - start < 0.8
+
+
+@pytest.mark.parametrize("title,artist", [
+    ("RUDE! (By Hearts2Hearts) (Melody Karaoke Version)", "ZZang KARAOKE"),
+    ("Someone Like You", "Adele Karaoke Band"),
+    ("Hello (In the Style of Adele)", "Studio X"),
+    ("Hello (Made Famous By Adele)", "Studio X"),
+    ("Hello (Originally Performed by Adele)", "Studio X"),
+    ("Hello", "Adele Tribute Project"),
+    ("Hello (by Adele)", "Studio X"),
+    ("사랑해 (MR)", "누군가"),
+    ("사랑해 노래방 버전", "누군가"),
+    ("Hello (Instrumental Cover)", "Studio X"),
+])
+def test_is_karaoke_true(title, artist):
+    assert ol.is_karaoke(title, artist)
+
+
+@pytest.mark.parametrize("title,artist", [
+    ("Wonderwall", "Oasis"),
+    ("Go Hard (Instrumental)", "MEOVV"),
+    ("Intro (Instrumental Version)", "Some Band"),
+    ("Song (Live)", "Mr. Big"),
+    ("Mr. Brightside", "The Killers"),
+    ("Stand By Me", "Oasis"),
+])
+def test_is_karaoke_false(title, artist):
+    assert not ol.is_karaoke(title, artist)
+
+
+def test_search_online_drops_karaoke_results():
+    table = {"/search/artist": {"data": []},
+             "/search?": {"data": [_track(1, "RUDE! (By Hearts2Hearts) (Melody Karaoke Version)", "ZZang KARAOKE", "I1"),
+                                   _track(2, "RUDE!", "Hearts2Hearts", "I2")]}}
+    with mock.patch("urllib.request.urlopen", side_effect=_routes(table)):
+        assert [s["artist"] for s in ol.search_online("RUDE")] == ["Hearts2Hearts"]

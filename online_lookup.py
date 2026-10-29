@@ -94,6 +94,26 @@ def _deezer(path):
     return data.get("data") or []
 
 
+# Karaoke and "copy of someone else's song" listings. Matched in the title or the artist name, except where noted.
+_COPY_WORDS = re.compile(
+    r"karaoke|가라오케|노래방|in the style of|made famous|originally (?:performed )?by|performed by|tribute|backing track",
+    re.IGNORECASE,
+)
+_BY_ARTIST_IN_TITLE = re.compile(r"[(\[]\s*by\s+[^)\]]+[)\]]", re.IGNORECASE)  # "RUDE! (By Hearts2Hearts)"
+_MR_IN_TITLE = re.compile(r"\bMR\b(?!\.)")  # Korean "MR" = music-only track; upper case only, so "Mr. Big" stays
+_INSTRUMENTAL = re.compile(r"instrumental|inst\.|반주", re.IGNORECASE)
+_COVERISH = re.compile(r"\bcover\b|\bversion of\b|\bsound-?alike\b", re.IGNORECASE)
+
+
+def is_karaoke(title, artist):
+    """True for karaoke / tribute / "made famous by" listings. A plain "(Instrumental)" is a real
+    track and is kept; an instrumental only counts when it also looks like a copy of another song."""
+    text = f"{title} {artist}"
+    if _COPY_WORDS.search(text) or _BY_ARTIST_IN_TITLE.search(title) or _MR_IN_TITLE.search(title):
+        return True
+    return bool(_INSTRUMENTAL.search(title) and _COVERISH.search(text))
+
+
 def _online_song(item, cover=None, album=None):
     """One Deezer track object as a picker entry; None if it lacks an id, title or artist.
     `isrc` is None when the object does not carry one (see resolve_isrc)."""
@@ -154,7 +174,7 @@ def search_online(query):
     try:
         jobs = [
             pool.submit(_artist_songs, query),
-            pool.submit(lambda: [_online_song(t) for t in _deezer(f"/search?limit=15&q={urllib.parse.quote(query)}")]),
+            pool.submit(lambda: [_online_song(t) for t in _deezer(f"/search?limit=25&q={urllib.parse.quote(query)}")]),
         ]
         concurrent.futures.wait(jobs, timeout=SEARCH_TIMEOUT_SECONDS)
         results, error = [], None
@@ -175,6 +195,7 @@ def search_online(query):
         if song["id"] not in seen and key not in seen:
             seen.update({song["id"], key})
             songs.append(song)
+    songs = [s for s in songs if not is_karaoke(s["title"], s["artist"])]
     if not songs:
         raise LookupFailed("no_results")
     return songs[:MAX_ONLINE]
