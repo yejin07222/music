@@ -384,3 +384,31 @@ override; Dept, Nogymx, Lunar Isles and Black String were dropped by it). A resc
 (the `identity_check` column says which page was used). `review/korea_extra_rejected_artists.csv` lists the
 50 artists that are still left out. The song counts in the app are computed (the picker shows "N곡 검색됨");
 no text in the app contains a fixed number of songs.
+
+## 15. Japanese hip-hop and the hip-hop limit
+
+Problem: the Japan pool (2,388 songs) had no hip-hop tags at all, so a rap song with 일본 only got J-pop and the
+style bonus never applied.
+
+`python scripts/collect_korea_extra.py --country JP` (the Korea script with a country setting) collects Japanese
+hip-hop: MusicBrainz artists registered in Japan with the tags hip hop / rap / japanese hip hop (190), then
+Deezer + ReccoBeats and the same namesake checks as the Korea run (kana instead of Hangul, ISRC code JP). Each
+artist's genres are its own top MusicBrainz tags, most-voted first, so rock bands stay rock (Dragon Ash, 10-FEET)
+and instrumental producers such as Nujabes are tagged hip-hop. 11 artists were dropped because their only
+hip-hop evidence was a single tag vote while other, non-hip-hop and non-rock tags clearly dominated.
+
+Files: `data/japan_extra.csv` (the songs; the app adds them to the 일본 pool and to 전체, never to another
+country or to 영어권), `review/japan_extra_artists.csv`, `review/japan_extra_rejected_artists.csv` (every
+artist that was left out and why) and `review/japan_removed_by_hand.csv` (artists checked by hand and removed:
+Cradle, Akissa, ELECTRONICOS FANTASTICOS! and TAKUYA are namesakes; code;playork and GARDMAN were kept).
+
+Numbers: **3,799 songs by 120 artists**; 일본 is 2,388 + 3,799 = **6,187**, 한국 14,403, 전체 49,210.
+Not checked: the JP ISRC check misses TuneCore Japan codes ("TCJP..."), so some real artists show a share of 0.
+
+Hip-hop limit (`MAX_HIPHOP_FOR_OTHER_STYLES = 2` in `recommender.py`): without it, a soft song like Adele's
+"Someone Like You" got 5 mellow rap songs in its 일본 top 10, because their audio features are close. Now, with
+style matching on, a song that is not hip-hop gets at most 2 hip-hop songs in its top 10 (the next best songs
+move up). This applies the same way to every country; hip-hop inputs, runs without style matching and online
+songs (no genre information) are not limited. Results: Eminem -> 일본 is 10 rap songs (before: J-pop, idol
+and anime), Nirvana -> 일본 is still J-rock (plus 10-FEET and UVERworld), Kansas -> 일본 is unchanged, Adele ->
+일본 has 2 hip-hop songs. The 한국 lists for Adele and Nirvana are identical with and without the limit.

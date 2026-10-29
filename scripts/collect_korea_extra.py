@@ -2,6 +2,12 @@
 
 Run from the project folder:   python scripts/collect_korea_extra.py
 Quick test with a few artists: python scripts/collect_korea_extra.py --limit-artists 5 --no-playlists
+Japanese hip-hop instead:      python scripts/collect_korea_extra.py --country JP   (-> data/japan_extra.csv)
+
+--country JP does the same for Japan: MusicBrainz artists registered in Japan with a hip hop / rap tag, no playlists,
+kana instead of Hangul, ISRC code JP instead of KR. Each artist's genres come from its own top MusicBrainz tags
+(rock stays rock); an artist whose only hip-hop evidence is a single tag vote while other, non-hip-hop and
+non-rock tags clearly dominate is left out (review/japan_extra_rejected_artists.csv).
 
 Sources (all free, no API keys):
   1. MusicBrainz: every artist registered in South Korea with one of the style tags (indie, hip hop, rock,
@@ -57,6 +63,24 @@ FEATURES = ["valence", "energy", "danceability", "acousticness", "tempo",
 COLUMNS = ["track_id", "isrc", "track_name", "artists", "popularity"] + FEATURES + ["genres", "source"]
 SPOTIFY_ID = re.compile(r"[A-Za-z0-9]{22}")
 HANGUL = re.compile("[ᄀ-ᇿ㄰-㆏가-힣]")
+KANA = re.compile("[\u3040-\u30ff\u31f0-\u31ff\uff66-\uff9f]")  # kana only: kanji are shared with Chinese
+ROOT_DIR = Path(__file__).resolve().parent.parent
+
+# Per-country settings; main() copies the chosen one into SETTINGS, which the helpers below read (KR by default).
+COUNTRIES = {
+    "KR": {"code": "KR", "area": "South Korea", "script": HANGUL, "script_name": "Hangul", "mb_tags": MB_TAGS,
+           "playlists": PLAYLIST_QUERIES, "fallback_genre": "k-pop", "share_column": "korean_isrc_share",
+           "out": ROOT_DIR / "data" / "korea_extra.csv", "review": ROOT_DIR / "review" / "korea_extra_artists.csv",
+           "rejected": ROOT_DIR / "review" / "korea_extra_rejected_artists.csv",
+           "cache": Path(__file__).resolve().parent / ".cache" / "korea_extra"},
+    "JP": {"code": "JP", "area": "Japan", "script": KANA, "script_name": "kana", "mb_tags": ["hip hop", "rap", "japanese hip hop"],
+           "playlists": [], "fallback_genre": "hip-hop", "share_column": "japanese_isrc_share",
+           "out": ROOT_DIR / "data" / "japan_extra.csv", "review": ROOT_DIR / "review" / "japan_extra_artists.csv",
+           "rejected": ROOT_DIR / "review" / "japan_extra_rejected_artists.csv",
+           "cache": Path(__file__).resolve().parent / ".cache" / "japan_extra",
+           "by_hand": ROOT_DIR / "review" / "japan_removed_by_hand.csv"},
+}
+SETTINGS = dict(COUNTRIES["KR"])
 
 # MusicBrainz tag -> the dataset's genre names, so the app's style bonus (STYLE_FAMILIES) works for these songs.
 TAG_MAP = {
@@ -75,6 +99,11 @@ TAG_MAP = {
     "acoustic": ["acoustic"], "country": ["country"],
     "pop": ["pop"], "k-pop": ["k-pop"], "dance": ["dance"], "electronic": ["electronic"], "edm": ["edm"],
     "house": ["house"], "jazz": ["jazz"], "blues": ["blues"],
+    # hip-hop variants (the Japanese run reads each artist's own tags); instrumental hip-hop producers stay hip-hop
+    "instrumental hip hop": ["hip-hop"], "instrumental hip-hop": ["hip-hop"], "jazz hip hop": ["hip-hop"],
+    "jazzy hip hop": ["hip-hop"], "boom bap": ["hip-hop"], "pop rap": ["hip-hop"], "emo rap": ["hip-hop"],
+    "conscious hip hop": ["hip-hop"], "hardcore hip hop": ["hip-hop"], "underground hip hop": ["hip-hop"],
+    "japanese hip hop": ["hip-hop"], "rapper": ["hip-hop"],
 }
 SEARCH_TAG_STYLE = {"indie": "indie", "hip hop": "hip-hop", "rock": "rock", "ballad": "ballad", "r&b": "r-n-b", "folk": "folk"}
 PLAYLIST_STYLE = {"k-indie": "indie", "korean indie": "indie", "한국 인디": "indie", "korean hip hop": "hip-hop",
@@ -91,7 +120,43 @@ def norm(text):
 
 
 def has_hangul(text):
-    return bool(HANGUL.search(text or ""))
+    """True if the text has a letter of the country's own script (Hangul for KR, kana for JP)."""
+    return bool(SETTINGS["script"].search(text or ""))
+
+
+def in_country(artist):
+    """True if this MusicBrainz artist record is registered in the country being collected."""
+    return artist.get("country") == SETTINGS["code"] or (artist.get("area") or {}).get("name") == SETTINGS["area"]
+
+
+_HIPHOP_TAG = re.compile(r"hip[ -]?hop|\brap\b|\brapper\b|boom bap|\btrap\b")
+_ROCK_TAG = re.compile(r"rock|punk|metal|\bemo\b|hardcore|grunge|shoegaze")
+
+
+def top_tag_genres(tag_counts, search_tags=()):
+    """Dataset-style genres from the artist's own MusicBrainz tags, most-voted first (rock stays rock). If none of
+    the tags maps to a genre, the style of the search that found the artist."""
+    out = []
+    for name, _ in sorted(tag_counts.items(), key=lambda kv: -kv[1]):
+        out += TAG_MAP.get(name.casefold().strip(), [])
+    if not out:
+        out = [SEARCH_TAG_STYLE[t] for t in search_tags if t in SEARCH_TAG_STYLE]
+    seen, result = set(), []
+    for g in out:
+        if g not in seen: seen.add(g); result.append(g)
+    return result[:MAX_GENRES]
+
+
+def weak_hiphop_reason(tag_counts):
+    """Why to leave out an artist found through a hip-hop tag, or "" to keep it: only if that tag has a single vote
+    (or none) and the most-voted tags are clearly neither hip-hop nor rock. No tag information: keep."""
+    if not tag_counts: return ""
+    hiphop = max((c for t, c in tag_counts.items() if _HIPHOP_TAG.search(t.casefold())), default=0)
+    top = max(tag_counts.values())
+    top_tags = sorted(t for t, c in tag_counts.items() if c == top)
+    if hiphop >= 2 or hiphop == top: return ""
+    if any(_HIPHOP_TAG.search(t.casefold()) or _ROCK_TAG.search(t.casefold()) for t in top_tags): return ""
+    return f"weak hip-hop tag ({hiphop} vote), top tags: {', '.join(top_tags)} ({top} votes)"
 
 
 _BRACKETS = re.compile(r"\([^)]*\)|\[[^\]]*\]")
@@ -149,10 +214,10 @@ def has_all_features(f):
 
 
 def kr_isrc_share(isrcs):
-    """Share of the ISRCs that start with the country code KR (released by a Korean label); 0 if there are none.
+    """Share of the ISRCs that start with the country code (KR, or JP) (released by a local label); 0 if there are none.
     Only positive evidence: Korean indie artists who use a foreign distributor have other codes."""
     isrcs = list(isrcs)
-    return sum(1 for i in isrcs if (i or "").upper().startswith("KR")) / len(isrcs) if isrcs else 0.0
+    return sum(1 for i in isrcs if (i or "").upper().startswith(SETTINGS["code"])) / len(isrcs) if isrcs else 0.0
 
 
 def safe_cell(value):
@@ -237,10 +302,10 @@ def mb_artists(tag, cache):
     if tag in cache: return cache.get(tag)
     found, offset = [], 0
     while True:
-        query = urllib.parse.quote(f'country:KR AND tag:"{tag}"')
+        query = urllib.parse.quote(f'country:{SETTINGS["code"]} AND tag:"{tag}"')
         data = get_json(f"https://musicbrainz.org/ws/2/artist/?fmt=json&limit=100&offset={offset}&query={query}", MB_LIMIT)
         artists = (data or {}).get("artists", [])
-        found += [a for a in artists if a.get("country") == "KR"]
+        found += [a for a in artists if a.get("country") == SETTINGS["code"]]
         offset += len(artists)
         if not artists or offset >= (data or {}).get("count", 0): break
     cache.put(tag, found, save_every=1)
@@ -295,8 +360,8 @@ def mb_country(name, cache):
     wanted, result = norm(name), "unknown"
     for a in (data or {}).get("artists", []):
         if wanted in {norm(a.get("name"))} | {norm(x.get("name")) for x in a.get("aliases", [])}:
-            if a.get("country") == "KR" or (a.get("area") or {}).get("name") == "South Korea":
-                result = "KR"; break
+            if in_country(a):
+                result = SETTINGS["code"]; break
             result = a.get("country") or "other"
     cache.put(name, result)
     return result
@@ -311,7 +376,7 @@ def mb_find_id(name, cache):
     wanted, found = norm(name), ""
     for a in data.get("artists", []):
         if wanted in {norm(a.get("name"))} | {norm(x.get("name")) for x in a.get("aliases", [])} and a.get("id") \
-                and (a.get("country") == "KR" or (a.get("area") or {}).get("name") == "South Korea"):
+                and in_country(a):
             found = a["id"]; break
     cache.put(name, found)
     return found
@@ -360,11 +425,11 @@ def check_identity(artists, tracks_by_artist, mb_ids, mb_links, recco_artists, w
         ambiguous = info.get("n_exact", 1) > 1
         tracks = tracks_by_artist.get(aid, [])
         if has_hangul(info["name"]) or any(has_hangul(t["title"]) for t in tracks):
-            return aid, ("Hangul name or songs", None)
+            return aid, (f"{SETTINGS['script_name']} name or songs", None)
 
         def no_evidence(why):  # nothing proves or disproves it: Korean ISRC codes count, then the name decides
             if kr_isrc_share(t["isrc"] for t in tracks) >= KR_ISRC_SHARE_MIN:
-                return aid, ("ISRC country code KR on most songs", None)
+                return aid, (f"ISRC country code {SETTINGS['code']} on most songs", None)
             if ambiguous: return aid, ("rejected: shares its name with other Deezer artists, " + why, None)
             return aid, ("unique name on Deezer, " + why, None)
 
@@ -458,7 +523,7 @@ def build_rows(artists, tracks_by_artist, features, known_ids, known_keys):
             rows.append({"track_id": f["spotify_id"], "isrc": t["isrc"], "track_name": t["title"], "artists": t["artist"],
                          "popularity": int(f.get("popularity") or 0),
                          **{k: round(float(f[k]), 3) for k in FEATURES},
-                         "genres": ";".join(info["genres"]) or "k-pop", "source": info["source"]})
+                         "genres": ";".join(info["genres"]) or SETTINGS["fallback_genre"], "source": info["source"]})
     return rows, skipped
 
 
@@ -473,7 +538,7 @@ def artist_summary(rows, artists_by_name):
         out.append({"artist": safe_cell(name), "song_count": len(rs), "genres": ";".join(g for g, _ in genres),
                     "musicbrainz_country": artists_by_name.get(norm(name), {}).get("country", ""), "example_title": safe_cell(best["track_name"]),
                     "identity_check": artists_by_name.get(norm(name), {}).get("identity", ""),
-                    "korean_isrc_share": round(kr_isrc_share(r["isrc"] for r in rs), 2)})
+                    SETTINGS["share_column"]: round(kr_isrc_share(r["isrc"] for r in rs), 2)})
     out.sort(key=lambda a: (-a["song_count"], a["artist"]))
     return out
 
@@ -489,28 +554,43 @@ def write_csv(path, rows, columns):
 # ----------------------------------------------------------------------------- main
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--country", choices=sorted(COUNTRIES), default="KR", help="KR (default) or JP (hip-hop artists registered in Japan)")
     p.add_argument("--max-albums", type=int, default=5, help="albums per artist (default 5)")
     p.add_argument("--limit-artists", type=int, help="only the first N MusicBrainz artists (for a quick test)")
     p.add_argument("--no-playlists", action="store_true", help="skip the Deezer playlist artists")
-    p.add_argument("--cache-dir", default=str(DEFAULT_CACHE))
-    p.add_argument("--out", default=str(OUT_SONGS))
-    p.add_argument("--review", default=str(OUT_ARTISTS))
-    p.add_argument("--rejected", default=str(OUT_REJECTED))
+    p.add_argument("--cache-dir")
+    p.add_argument("--out")
+    p.add_argument("--review")
+    p.add_argument("--rejected")
     args = p.parse_args(argv)
+    SETTINGS.clear(); SETTINGS.update(COUNTRIES[args.country])  # the helpers read the chosen country from here
+    code = SETTINGS["code"]
+    args.cache_dir = args.cache_dir or str(SETTINGS["cache"])
+    args.out, args.review, args.rejected = (getattr(args, k) or str(SETTINGS[k]) for k in ("out", "review", "rejected"))
+    if not SETTINGS["playlists"]: args.no_playlists = True
     cache_dir = args.cache_dir
     C = {n: Cache(cache_dir, n) for n in ("mb_artists", "deezer_artist2", "playlists", "mb_country", "mb_ids", "mb_links2", "recco_artists", "albums", "tracks", "features")}
     t0 = time.time()
     log = lambda msg: print(f"[{time.time() - t0:6.0f}s] {msg}", flush=True)
 
-    # 1. MusicBrainz: Korean artists with the style tags
+    # 1. MusicBrainz: the country's artists with the style tags
     mb = {}
-    for tag in MB_TAGS:
+    for tag in SETTINGS["mb_tags"]:
         for a in mb_artists(tag, C["mb_artists"]):
             d = mb.setdefault(a["id"], {"mb_id": a["id"], "name": a["name"], "aliases": [x["name"] for x in a.get("aliases", [])],
-                                        "tags": [x["name"] for x in a.get("tags", [])], "search_tags": []})
+                                        "tags": [x["name"] for x in a.get("tags", [])], "search_tags": [],
+                                        "tag_counts": {x["name"]: x.get("count", 0) for x in a.get("tags", [])}})
             if tag not in d["search_tags"]: d["search_tags"].append(tag)
     mb_list = list(mb.values())[: args.limit_artists]
-    log(f"MusicBrainz: {len(mb)} Korean artists with the tags {MB_TAGS}" + (f" (using the first {len(mb_list)})" if args.limit_artists else ""))
+    rejected = []
+    if code == "JP":  # found through a hip-hop tag with a single vote while other tags clearly dominate
+        for a in list(mb_list):
+            why = weak_hiphop_reason(a["tag_counts"])
+            if why:
+                mb_list.remove(a)
+                rejected.append({"artist": safe_cell(a["name"]), "deezer_id": "", "reason": "rejected: " + why,
+                                 "source": "musicbrainz:" + "+".join(a["search_tags"]), "songs_found": 0})
+    log(f"MusicBrainz: {len(mb)} {code} artists with the tags {SETTINGS['mb_tags']}" + (f" (using the first {len(mb_list)})" if args.limit_artists else ""))
 
     # 2. Deezer artist for each of them
     artists = {}   # deezer id -> info
@@ -519,8 +599,12 @@ def main(argv=None):
     with ThreadPoolExecutor(4) as pool: matched = list(pool.map(match, mb_list))
     for a, d in matched:
         if d:
-            artists[d["id"]] = {"name": d["name"], "genres": map_genres(a["search_tags"], a["tags"]), "country": "KR",
+            genres = top_tag_genres(a["tag_counts"], a["search_tags"]) if code == "JP" else map_genres(a["search_tags"], a["tags"])
+            artists[d["id"]] = {"name": d["name"], "genres": genres, "country": code,
                                 "source": "musicbrainz:" + "+".join(a["search_tags"]), "mb_id": a["mb_id"], "n_exact": d["n_exact"]}
+        elif code == "JP":
+            rejected.append({"artist": safe_cell(a["name"]), "deezer_id": "", "reason": "no Deezer artist with exactly this name",
+                             "source": "musicbrainz:" + "+".join(a["search_tags"]), "songs_found": 0})
     log(f"Deezer: {len(artists)} of {len(mb_list)} MusicBrainz artists found by exact name")
 
     # 3. playlist artists, kept only if MusicBrainz confirms Korea or the name has Hangul
@@ -545,7 +629,7 @@ def main(argv=None):
             with ThreadPoolExecutor(2) as pool: results = list(pool.map(check, new.items()))
             for n, (i, v, country) in enumerate(results):  # artists MusicBrainz did not answer for: ask once more
                 if country is None: results[n] = (i, v, mb_country(v["name"], C["mb_country"]))
-            keep = {i: (v, c) for i, v, c in results if c == "KR" or (c or "").startswith("n/a")}
+            keep = {i: (v, c) for i, v, c in results if c == code or (c or "").startswith("n/a")}
             log(f"  MusicBrainz check done: {len(keep)} of {len(new)} kept, {sum(1 for r in results if r[2] is None)} without an answer")
             return keep
         verify_future = pool2.submit(verify)   # 1 request/second: runs next to the Deezer work below
@@ -573,7 +657,7 @@ def main(argv=None):
 
     # 4b. namesakes: is the Deezer artist really the Korean one? (see the top of this file)
     verdicts = check_identity(artists, tracks_by_artist, C["mb_ids"], C["mb_links2"], C["recco_artists"])
-    rejected, switched = [], 0
+    switched = 0
     for aid, (status, new_id) in verdicts.items():
         info = artists[aid]
         if status.startswith("rejected"):
@@ -589,6 +673,14 @@ def main(argv=None):
         else:
             info["identity"] = status
     log(f"namesake check: {Counter(v[0] for v in verdicts.values())}; {switched} switched, {len(rejected)} left out")
+    by_hand = SETTINGS.get("by_hand")  # artists checked by hand and removed (columns: artist, reason)
+    if by_hand and Path(by_hand).exists():
+        with open(by_hand, newline="", encoding="utf-8") as f:
+            removed_names = {norm(r["artist"]): r["reason"] for r in csv.DictReader(f)}
+        for aid in [a for a, info in artists.items() if norm(info["name"]) in removed_names]:
+            info = artists.pop(aid)
+            rejected.append({"artist": safe_cell(info["name"]), "deezer_id": aid, "reason": "removed by hand: " + removed_names[norm(info["name"])],
+                             "source": info["source"], "songs_found": len(tracks_by_artist.pop(aid, []))})
     write_csv(Path(args.rejected), rejected, ["artist", "deezer_id", "reason", "source", "songs_found"])
     for c in C.values(): c.save()
     isrcs = sorted({t["isrc"] for tr in tracks_by_artist.values() for t in tr})
@@ -604,7 +696,7 @@ def main(argv=None):
     by_name = {}
     for info in artists.values(): by_name.setdefault(norm(info["name"]), info)
     summary = artist_summary(rows, by_name)
-    write_csv(Path(args.review), summary, ["artist", "song_count", "genres", "musicbrainz_country", "example_title", "identity_check", "korean_isrc_share"])
+    write_csv(Path(args.review), summary, ["artist", "song_count", "genres", "musicbrainz_country", "example_title", "identity_check", SETTINGS["share_column"]])
     log(f"wrote {len(rows)} songs by {len(summary)} artists -> {args.out}")
     log(f"skipped: {dict(skipped)}")
     log("genres: " + str(dict(Counter(g for r in rows for g in r["genres"].split(";")).most_common(12))))

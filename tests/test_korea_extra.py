@@ -136,7 +136,7 @@ def test_the_real_extra_file_if_it_exists():
     assert set(g for s in extra.genres for g in s.split(";")) <= allowed
     assert extra.source.str.match(r"^(musicbrainz|playlist|review-rescue|review-override):").all()
     r = Recommender()
-    assert r.n_extra == len(extra)
+    assert r.n_extra - int(r._extra_japan.sum()) == len(extra)  # the Japanese extra songs are counted separately
     excluded = set(pd.read_csv(recommender.EXCLUDED_PATH).track_id)
     expected = 400 + int((~extra.track_id.isin(excluded)).sum())
     assert int(r._country_mask["South Korea"].sum()) == expected  # 400 reviewed songs + the extras that are not excluded
@@ -190,3 +190,57 @@ def test_the_extra_file_has_the_explicit_overrides():
     assert len(exhibition) >= 10 and exhibition.isrc.str.startswith("KR").all() and exhibition.source.eq("review-override:kr_isrc").all()
     assert not (name == "toy").any()  # none of Toy's English pages has a KR ISRC song
     assert not name.eq("잠비나이").any()  # the tiny Hangul page was replaced by the override
+
+
+def test_japan_extra_songs_join_japan_and_all_only(base, tmp_path):
+    rows = [extra_row("J" * 22, "Rap Tokyo", "Mock Japanese Rapper", "hip-hop", valence=0.3, energy=0.4),
+            extra_row("K" * 22, "Rock Tokyo", "Mock Japanese Band", "rock")]
+    japan_file = write_extra(tmp_path / "japan_extra.csv", rows)
+    r = Recommender(extra_path=None, japan_extra_path=japan_file)
+    assert r.n_extra == 2 and len(r.df) == len(base.df) + 2
+    for tid in ("J" * 22, "K" * 22):
+        assert tid in set(r.df.loc[r._pool("Japan"), "track_id"]) and tid in set(r.df.loc[r._pool("All"), "track_id"])
+        assert tid not in set(r.df.loc[r._pool("South Korea"), "track_id"]) and tid not in set(r.df.loc[r._pool("English-language"), "track_id"])
+    # a hip-hop input now gets the Japanese rap song first (style bonus), and the rock one is not a hip-hop match
+    out = r.recommend_from_mood({f: 0.5 for f in FEATURES} | {"valence": 0.3, "energy": 0.4, "tempo": 120.0, "loudness": -8.0}, "Japan", 1)
+    assert out.iloc[0].track_id == "J" * 22
+
+
+def test_plain_dataset_without_extra_path_has_no_japan_extra(base):
+    assert base.n_extra == 0 and int(base._extra_japan.sum()) == 0
+
+
+def test_japan_extra_songs_stay_out_of_other_countries_even_with_matching_genre_tags(tmp_path):
+    row = extra_row("L" * 22, "Pop Tokyo", "Mock Japanese Singer", "k-pop;hip-hop")  # a tag that is a Korean genre
+    r = Recommender(extra_path=None, japan_extra_path=write_extra(tmp_path / "japan_extra.csv", [row]))
+    in_pools = [c for c in r.countries if "L" * 22 in set(r.df.loc[r._pool(c), "track_id"])]
+    assert in_pools == ["Japan"]
+
+
+def _fake_japan_rap_next_to(rec, track_id, tmp_path, n=6):
+    """A Japan extra file with n hip-hop songs whose features are almost exactly those of `track_id`."""
+    f = rec.df.loc[rec.df.track_id == track_id, FEATURES].iloc[0].to_dict()
+    rows = [extra_row(f"{chr(65 + k)}" * 22, f"Rap {k}", f"Mock Rapper {k}", "hip-hop", **{**f, "valence": f["valence"] + 0.001 * k})
+            for k in range(n)]
+    return write_extra(tmp_path / "japan_extra.csv", rows), {r["track_id"] for r in rows}
+
+
+def test_a_non_hiphop_song_gets_at_most_two_hiphop_songs_in_every_country(base, tmp_path):
+    adele = base.search("Someone Like You").iloc[0].track_id
+    path, rap_ids = _fake_japan_rap_next_to(base, adele, tmp_path)
+    r = Recommender(extra_path=None, japan_extra_path=path)
+    for country in ("Japan", "All"):
+        capped = r.recommend(adele, country, 10, method="euclid", weighted=True, style=True)
+        assert len(capped) == 10 and capped.track_id.isin(rap_ids).sum() == 2
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(recommender, "MAX_HIPHOP_FOR_OTHER_STYLES", None)
+            assert r.recommend(adele, country, 10, method="euclid", weighted=True, style=True).track_id.isin(rap_ids).sum() == 6
+    # without style matching there is no limit (the plain research mode)
+    assert r.recommend(adele, "Japan", 10, method="euclid", weighted=True).track_id.isin(rap_ids).sum() == 6
+
+
+def test_a_hiphop_song_is_not_limited(base, tmp_path):
+    rap = base.df[base.df.genres.str.contains("hip-hop")].iloc[0].track_id
+    path, rap_ids = _fake_japan_rap_next_to(base, rap, tmp_path)
+    r = Recommender(extra_path=None, japan_extra_path=path)
+    assert r.recommend(rap, "Japan", 10, method="euclid", weighted=True, style=True).track_id.isin(rap_ids).sum() == 6

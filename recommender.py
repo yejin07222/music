@@ -23,6 +23,7 @@ EXCLUDED_PATH = os.path.join(_DATA_DIR, "excluded_tracks.csv")  # hand-reviewed 
 INCLUDED_PATH = os.path.join(_DATA_DIR, "included_tracks.csv")  # hand-added songs (track_id, country)
 REMOVED_PATH = os.path.join(_DATA_DIR, "removed_from_country.csv")  # hand-removed from one country (track_id, country)
 EXTRA_PATH = os.path.join(_DATA_DIR, "korea_extra.csv")  # more Korean songs (scripts/collect_korea_extra.py)
+JAPAN_EXTRA_PATH = os.path.join(_DATA_DIR, "japan_extra.csv")  # Japanese hip-hop (collect_korea_extra.py --country JP)
 FEATURES = [
     "valence", "energy", "danceability", "acousticness", "tempo",
     "loudness", "speechiness", "instrumentalness", "liveness",
@@ -48,6 +49,7 @@ STYLE_FAMILIES = {
     "r&b": {"r-n-b", "soul", "funk", "groove"},
 }
 STYLE_BONUS = 0.2  # added to the 0-1 similarity of candidates whose style matches the input's
+MAX_HIPHOP_FOR_OTHER_STYLES = 2  # a song that is not hip-hop gets at most this many hip-hop songs in its list (None = no limit)
 
 
 @functools.lru_cache(maxsize=None)
@@ -72,19 +74,27 @@ def has_non_latin(text):
 
 class Recommender:
     def __init__(self, path=DATA_PATH, excluded_path=EXCLUDED_PATH, included_path=INCLUDED_PATH,
-                 removed_path=REMOVED_PATH, extra_path=EXTRA_PATH):
+                 removed_path=REMOVED_PATH, extra_path=EXTRA_PATH, japan_extra_path=None):
         base = pd.read_csv(path)
-        # Extra Korean songs (collected from MusicBrainz/Deezer/ReccoBeats) join the dataset; all of them belong to
-        # South Korea. extra_path=None (or a missing file) gives the plain dataset.
-        self._extra = np.zeros(len(base), dtype=bool)
-        if extra_path and os.path.exists(extra_path):
-            extra = pd.read_csv(extra_path)
-            extra = extra[~extra["track_id"].isin(set(base["track_id"]))].drop_duplicates("track_id")
-            self.df = pd.concat([base, extra[list(base.columns)]], ignore_index=True)
-            self._extra = np.r_[self._extra, np.ones(len(extra), dtype=bool)]
-        else:
-            self.df = base
-        self.n_extra = int(self._extra.sum())
+        # Extra songs (collected from MusicBrainz/Deezer/ReccoBeats) join the dataset: the ones in extra_path all
+        # belong to South Korea, the ones in japan_extra_path to Japan. extra_path=None (or a missing file) gives
+        # the plain dataset; japan_extra_path=None follows extra_path (the default file, or none if that is None).
+        if japan_extra_path is None and extra_path == EXTRA_PATH:
+            japan_extra_path = JAPAN_EXTRA_PATH
+        frames, known = [base], set(base["track_id"])
+        self._extra = np.zeros(len(base), dtype=bool)  # extra Korean songs
+        self._extra_japan = np.zeros(len(base), dtype=bool)
+        for file, korean in ((extra_path, True), (japan_extra_path, False)):
+            if file and os.path.exists(file):
+                extra = pd.read_csv(file)
+                extra = extra[~extra["track_id"].isin(known)].drop_duplicates("track_id")
+                known |= set(extra["track_id"])
+                frames.append(extra[list(base.columns)])
+                n = len(extra)
+                self._extra = np.r_[self._extra, np.full(n, korean)]
+                self._extra_japan = np.r_[self._extra_japan, np.full(n, not korean)]
+        self.df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else base
+        self.n_extra = int(self._extra.sum() + self._extra_japan.sum())
         excluded = set()
         if os.path.exists(excluded_path):
             excluded = set(pd.read_csv(excluded_path)["track_id"])
@@ -113,9 +123,15 @@ class Recommender:
             ) & not_excluded & ~self.df["track_id"].isin(removed.get(country, ())).to_numpy()
             for country in COUNTRY_GENRES
         }
-        # the extra songs are all Korean (they have to be listed in the exclusion/removal files to leave)
+        # the extra Korean songs are all Korean (they have to be listed in the exclusion/removal files to leave)
         self._country_mask["South Korea"] = self._country_mask["South Korea"] | (
             self._extra & not_excluded & ~self.df["track_id"].isin(removed.get("South Korea", ())).to_numpy()
+        )
+        for country in COUNTRY_GENRES:  # the extra Japanese songs belong to Japan only, whatever their genre tags say
+            if country != "Japan":
+                self._country_mask[country] &= ~self._extra_japan
+        self._country_mask["Japan"] = self._country_mask["Japan"] | (
+            self._extra_japan & not_excluded & ~self.df["track_id"].isin(removed.get("Japan", ())).to_numpy()
         )
         # English-language (not reviewed by hand): an English-ish genre, no other country's
         # genre and none of ENGLISH_EXCLUDED_TAGS, only Latin letters in the title and artist,
@@ -130,7 +146,7 @@ class Recommender:
             & latin_only.to_numpy()
             & ~foreign_artist.to_numpy()
             & not_excluded
-            & ~self._extra  # the extra songs are Korean, not English
+            & ~(self._extra | self._extra_japan)  # the extra songs are Korean or Japanese, not English
         ) | (self.df["track_id"].isin(included.get(ENGLISH_COUNTRY, ())).to_numpy() & not_excluded)
         self._country_mask[ENGLISH_COUNTRY] &= ~self.df["track_id"].isin(removed.get(ENGLISH_COUNTRY, ())).to_numpy()
 
@@ -172,7 +188,9 @@ class Recommender:
         method:   "cosine" (original) or "euclid" (similarity = 1 / (1 + distance)).
         weighted: scale features by FEATURE_WEIGHTS first.
         style:    add STYLE_BONUS to candidates sharing a style (rock, dance, ...)
-                  with the input song; `similarity` then includes the bonus.
+                  with the input song; `similarity` then includes the bonus. Also, if the input song is
+                  not hip-hop, at most MAX_HIPHOP_FOR_OTHER_STYLES hip-hop songs are listed (in every
+                  country), so a new pool of rap does not crowd out the sound-alikes of other styles.
         """
         pool = self._pool(country)
         matches = self.df.index[self.df["track_id"] == track_id]
@@ -182,7 +200,8 @@ class Recommender:
 
         candidates = pool.copy()
         candidates[i] = False  # never recommend the input song itself
-        return self._rank(self.X[i], candidates, n, method, weighted, self._styles[i] if style else None)
+        cap = MAX_HIPHOP_FOR_OTHER_STYLES if style and "hip-hop" not in self._styles[i] else None
+        return self._rank(self.X[i], candidates, n, method, weighted, self._styles[i] if style else None, cap)
 
     def recommend_from_mood(self, mood, country, n=10, method="cosine", weighted=False):
         """Like `recommend`, but the target is a mood instead of a song.
@@ -199,7 +218,7 @@ class Recommender:
         target = self.scaler.transform(raw[FEATURES])[0]
         return self._rank(target, pool, n, method, weighted)
 
-    def _rank(self, target, candidates, n, method="cosine", weighted=False, styles=None):
+    def _rank(self, target, candidates, n, method="cosine", weighted=False, styles=None, max_hiphop=None):
         if method not in ("cosine", "euclid"):
             raise ValueError(f"Unknown method: {method!r}")
         idx = candidates.nonzero()[0]
@@ -212,7 +231,11 @@ class Recommender:
             sims = 1.0 / (1.0 + np.linalg.norm(X - t, axis=1))
         if styles:
             sims = sims + STYLE_BONUS * np.array([bool(styles & c) for c in self._styles[idx]])
-        top = sims.argsort()[::-1][:n]
+        top = sims.argsort()[::-1]
+        if max_hiphop is not None:  # skip hip-hop songs beyond the limit; the next best songs move up
+            hiphop = np.array(["hip-hop" in s for s in self._styles[idx]])[top]
+            top = top[(hiphop.cumsum() <= max_hiphop) | ~hiphop]
+        top = top[:n]
         result = self.df.iloc[idx[top]].copy()
         result["similarity"] = sims[top]
         return result

@@ -517,3 +517,49 @@ def test_main_switches_namesakes_to_the_deezer_page_musicbrainz_links_and_leaves
     reasons = dict(zip(rejected.artist, rejected.reason))
     assert "no usable link" in reasons["Lonely"] and "Spotify artist is not the one" in reasons["Impostor"]
     assert set(rejected.songs_found) == {2}
+
+
+# ------------------------------------------------------------------ --country JP
+@pytest.fixture
+def japan():
+    with mock.patch.dict(cke.SETTINGS, cke.COUNTRIES["JP"]):
+        yield
+
+
+def test_japan_uses_kana_the_jp_isrc_code_and_japanese_artists(japan):
+    assert cke.has_hangul("ちゃんみな") and cke.has_hangul("ラップ") and not cke.has_hangul("Creepy Nuts") and not cke.has_hangul("사랑")
+    assert not cke.has_hangul("日本語")  # kanji alone could be Chinese
+    assert cke.kr_isrc_share(["JPA1", "jpb2", "KRC3", "USD4"]) == 0.5
+    assert cke.in_country({"country": "JP"}) and cke.in_country({"area": {"name": "Japan"}})
+    assert not cke.in_country({"country": "KR", "area": {"name": "South Korea"}})
+    artists = {1: {"name": "Rapper", "n_exact": 3, "mb_id": "none"}}
+    with mock.patch.object(cke, "mb_find_id", return_value=""):
+        verdict = cke.check_identity(artists, {1: [{"title": "A", "isrc": "JPX1"}, {"title": "B", "isrc": "JPX2"}]}, {}, {}, {})
+    assert verdict[1][0] == "ISRC country code JP on most songs"  # the status text names the country
+
+
+def test_top_tags_become_the_genres_rock_stays_rock():
+    assert cke.top_tag_genres({"rock": 3, "hip hop": 1, "alternative rock": 2}) == ["rock", "alt-rock", "hip-hop"]
+    assert cke.top_tag_genres({"instrumental hip hop": 10, "jazz": 2}) == ["hip-hop", "jazz"]
+    assert cke.top_tag_genres({"japanese": 1}, ["hip hop"]) == ["hip-hop"]  # nothing maps: the style it was searched by
+    assert cke.top_tag_genres({}) == []
+
+
+@pytest.mark.parametrize("tags,dropped", [
+    ({"hip hop": 1, "j-pop": 4, "anime": 2}, True),            # one weak vote, clearly something else on top
+    ({"hip hop": 1, "rock": 1}, False), ({"hip hop": 1}, False), ({}, False),
+    ({"hip hop": 1, "jazz": 1, "instrumental": 1}, False),     # all tied: nothing is clearly else
+    ({"instrumental hip hop": 10, "instrumental": 9, "hip hop": 9}, False),
+    ({"rock": 5, "hip hop": 1}, False),                         # rock bands stay
+    ({"hip hop": 2, "j-pop": 6}, False),                        # two votes are not weak
+    ({"rap": 1, "metal": 3, "jazz": 1}, False),
+])
+def test_only_weak_single_vote_non_hiphop_non_rock_artists_are_dropped(tags, dropped):
+    assert bool(cke.weak_hiphop_reason(tags)) is dropped
+
+
+def test_hand_removal_list_exists_and_names_its_artists():
+    import csv
+    with open(cke.COUNTRIES["JP"]["by_hand"], newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert {"Cradle", "Akissa", "ELECTRONICOS FANTASTICOS!", "TAKUYA"} <= {r["artist"] for r in rows} and all(r["reason"] for r in rows)
