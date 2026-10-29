@@ -146,18 +146,10 @@ class Recommender:
             raise ValueError(f"Unknown country: {country!r}")
         return self._country_mask[country]
 
-    def has_song(self, title, artist):
-        """True if the data has this song (same title and artist, ignoring case, punctuation and
-        remaster/version suffixes), whichever of its artists `artist` names."""
-        if not hasattr(self, "_song_keys"):
-            self._song_keys = {
-                song_key(t, a) for t, artists in zip(self.df["track_name"], self.df["artists"]) for a in artists.split(";")
-            }
-        return song_key(title, artist) in self._song_keys
-
     def search(self, query, limit=20):
-        """Songs whose title or artist contains `query` (case-insensitive),
-        most popular first."""
+        """Songs whose title or artist contains `query` (case-insensitive), most popular first.
+        If none does, songs where every word of `query` is in the title or the artists
+        ("Someone Like You Adele" finds Adele's song)."""
         query = query.strip()
         if not query:
             return self.df.iloc[0:0]
@@ -165,6 +157,9 @@ class Recommender:
             self.df["track_name"].str.contains(query, case=False, regex=False)
             | self.df["artists"].str.contains(query, case=False, regex=False)
         )
+        if not hit.any() and len(query.split()) > 1:
+            text = self.df["track_name"].str.cat(self.df["artists"], sep=" ")
+            hit = np.logical_and.reduce([text.str.contains(w, case=False, regex=False) for w in query.split()])
         return self.df[hit].sort_values("popularity", ascending=False).head(limit)
 
     def recommend(self, track_id, country, n=10, method="cosine", weighted=False, style=False):

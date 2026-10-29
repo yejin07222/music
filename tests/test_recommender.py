@@ -175,11 +175,10 @@ def test_song_key_ignores_case_punctuation_and_version_suffixes():
     assert song_key("Go Hard", "MEOVV") != song_key("Go Hard", "Other")
 
 
-def test_has_song_matches_any_listed_artist():
+def test_search_falls_back_to_all_words_in_title_or_artist():
     from recommender import Recommender
 
     rec = Recommender()
-    row = rec.df.iloc[0]
-    first_artist = row.artists.split(";")[-1]
-    assert rec.has_song(row.track_name.upper(), first_artist.lower())
-    assert not rec.has_song(row.track_name, "Nobody At All")
+    assert rec.search("Someone Like You Adele").iloc[0].track_name == "Someone Like You"
+    assert rec.search("Someone Like You Adele").iloc[0].artists == "Adele"
+    assert rec.search("zzzq xxxj").empty

@@ -12,7 +12,7 @@ import streamlit as st
 import media
 import results_table
 from countries import ALL_COUNTRIES
-from recommender import Recommender
+from recommender import Recommender, song_key
 from online_lookup import LookupFailed, fetch_features, resolve_isrc, search_online
 
 N_RESULTS = 10
@@ -323,8 +323,8 @@ with inputs_col:
     with st.container(key="inputs"):
         search_col, country_col = st.columns([2, 1])  # search box and country dropdown side by side
         with search_col:
-            query = st.text_input("노래 제목이나 가수 이름", placeholder="예: Someone Like You")
-            st.caption("가수 이름도 같이 쓰면 더 잘 찾아요 (예: Go Hard MEOVV)")
+            query = st.text_input("노래 제목이나 가수 이름", placeholder="예: Someone Like You Adele")
+            st.caption("가수 이름도 같이 쓰면 더 잘 찾아요")
         with country_col:
             countries = COUNTRY_ORDER_FIRST + [c for c in rec.countries if c not in COUNTRY_ORDER_FIRST]
             country = st.selectbox("나라 선택", countries, format_func=COUNTRY_LABELS.get)
@@ -340,11 +340,33 @@ if not query.strip():
 found = rec.search(query)
 state = online_state(query)  # None: not looked up yet; the data results are shown first and the lookup follows below
 online, online_error = state or ([], None)
-online = [s for s in online if not rec.has_song(s["title"], s["artist"])]  # a song the data has is shown once, from the data
+shown = {song_key(t, a) for t, artists in zip(found["track_name"], found["artists"]) for a in artists.split(";")}
+online = [s for s in online if song_key(s["title"], s["artist"]) not in shown]  # a song listed from the data is not listed again
 
 # One picker: the songs from the data first (most popular first), then the online ones
 choices = {row.track_id: (song_label(row), row) for row in found.itertuples()}
-choices.update({f"online:{s['id']}": (f"{s['title']} - {s['artist']} (온라인)", s) for s in online})
+choices.update({f"online:{s['id']}": (f"{s['title']} - {s['artist']}", s) for s in online})
+
+
+def tell_apart(choices):
+    """Labels that look the same get the album name (online songs) and then a number, so they can be told apart."""
+    labels = {k: label for k, (label, _) in choices.items()}
+    count = {}
+    for label in labels.values():
+        count[label] = count.get(label, 0) + 1
+    for k, (label, song) in choices.items():
+        album = song.get("album") if isinstance(song, dict) else None
+        if count[label] > 1 and album:
+            labels[k] = f"{label} · {album}"
+    seen = {}
+    for k, label in labels.items():
+        seen[label] = seen.get(label, 0) + 1
+        if seen[label] > 1:
+            labels[k] = f"{label} ({seen[label]})"
+    return labels
+
+
+labels = tell_apart(choices)
 
 
 def mood_sliders():
@@ -374,9 +396,9 @@ elif not choices:
 else:
     with picker_slot:
         key = st.selectbox(
-            f"어떤 곡인가요? ({len(choices)}곡 검색됨, 데이터 곡이 먼저)",
+            f"어떤 곡인가요? ({len(choices)}곡 검색됨)",
             list(choices),
-            format_func=lambda k: choices[k][0],
+            format_func=labels.get,
         )
         if state is None:
             st.caption("온라인에서 찾는 중…")

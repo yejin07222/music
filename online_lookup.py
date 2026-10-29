@@ -94,7 +94,7 @@ def _deezer(path):
     return data.get("data") or []
 
 
-def _online_song(item, cover=None):
+def _online_song(item, cover=None, album=None):
     """One Deezer track object as a picker entry; None if it lacks an id, title or artist.
     `isrc` is None when the object does not carry one (see resolve_isrc)."""
     try:
@@ -104,6 +104,7 @@ def _online_song(item, cover=None):
             "preview": item.get("preview") or None,
             "cover": cover or (item.get("album") or {}).get("cover_medium") or None,
             "link": item.get("link") or None,
+            "album": album or (item.get("album") or {}).get("title") or None,
         }
     except (KeyError, TypeError, ValueError, AttributeError):
         return None
@@ -135,7 +136,7 @@ def _artist_songs(query):
                         key=lambda a: str(a.get("release_date", "")), reverse=True)[:3]
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
             for album, tracks in zip(albums, pool.map(lambda al: _deezer(f"/album/{al['id']}/tracks?limit=10"), albums)):
-                songs += [s for s in (_online_song(t, album.get("cover_medium")) for t in tracks) if s]
+                songs += [s for s in (_online_song(t, album.get("cover_medium"), album.get("title")) for t in tracks) if s]
     songs.sort(key=lambda s: not matches(s))  # stable: the hinted title first, the rest keeps Deezer's order
     return songs[:MAX_ARTIST_SONGS]
 
@@ -143,7 +144,7 @@ def _artist_songs(query):
 def search_online(query):
     """Songs for the picker: the artist's popular songs (if `query` names an artist), then the Deezer title search.
 
-    Returns [{"id", "title", "artist", "isrc" or None, "preview", "cover", "link"}], at most MAX_ONLINE,
+    Returns [{"id", "title", "artist", "isrc" or None, "preview", "cover", "link", "album" or None}], at most MAX_ONLINE,
     without repeats. The two lookups run side by side and all of it is cut off after SEARCH_TIMEOUT_SECONDS
     in total; a lookup that fails or is too slow only drops its own songs.
     Raises LookupFailed (the first error) if nothing at all could be loaded, or "no_results" if both were empty.

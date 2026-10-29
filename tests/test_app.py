@@ -308,8 +308,9 @@ def test_picker_lists_data_songs_first_then_online_ones_without_repeats():
     options = _picker(at).options
     assert options[0] == "Someone Like You - Adele"
     assert options.count("Someone Like You - Adele") == 1  # the online copy of a data song is dropped
-    assert options[-1] == "Someone Like You (Live) - A Cover Band (온라인)"
-    assert [o.endswith("(온라인)") for o in options] == sorted(o.endswith("(온라인)") for o in options)  # online ones last
+    assert options[-1] == "Someone Like You (Live) - A Cover Band"  # online songs come after the data ones, untagged
+    assert _picker(at).label == f"어떤 곡인가요? ({len(options)}곡 검색됨)"
+    assert not any("온라인" in o for o in options)
 
 
 def test_online_song_in_the_picker_gets_its_recommendations():
@@ -326,7 +327,7 @@ def test_online_song_in_the_picker_gets_its_recommendations():
             mock.patch.object(online_lookup, "fetch_features", return_value=(mood, None)) as fetch:
         at = _search("MEOVV Go Hard Zzzq", mock.patch.object(media, "covers", return_value={}))
     assert not at.exception and not at.error
-    assert _picker(at).options == ["Go Hard - MEOVV (온라인)"]
+    assert _picker(at).options == ["Go Hard - MEOVV"]
     resolve.assert_called_once_with(7)
     fetch.assert_called_once_with("KSA002652474")
     assert _table_html(at).count('class="row"') == 10
@@ -359,7 +360,6 @@ def test_online_failure_still_shows_data_results_without_an_error():
             at = _search("Someone Like You", mock.patch.object(media, "covers", return_value={}))
         assert not at.exception and not at.error
         assert _picker(at).options[0] == "Someone Like You - Adele"
-        assert not any(o.endswith("(온라인)") for o in _picker(at).options)
 
 
 def test_unknown_song_and_online_failure_offers_the_mood_sliders():
@@ -367,3 +367,37 @@ def test_unknown_song_and_online_failure_offers_the_mood_sliders():
     assert not at.exception
     assert any("데이터에도 온라인에도 없어요" in w.value for w in at.warning)
     assert len(at.slider) == 5
+
+
+def test_title_plus_artist_search_puts_the_data_song_first_and_not_twice():
+    from unittest import mock
+
+    import media
+    import online_lookup
+
+    online = [_online(1, "Someone Like You", "Adele"), _online(2, "Someone Like You (Piano Version)", "Piano Superstar")]
+    with mock.patch.object(online_lookup, "search_online", return_value=online):
+        at = _search("Someone Like You Adele", mock.patch.object(media, "covers", return_value={}))
+    assert not at.exception
+    options = _picker(at).options
+    assert options[0] == "Someone Like You - Adele"
+    assert options.count("Someone Like You - Adele") == 1 and options[-1] == "Someone Like You (Piano Version) - Piano Superstar"
+    assert at.text_input[0].placeholder == "예: Someone Like You Adele"
+    assert "가수 이름도 같이 쓰면 더 잘 찾아요" in [c.value for c in at.caption]
+
+
+def test_songs_that_look_the_same_get_the_album_or_a_number():
+    from unittest import mock
+
+    import media
+    import online_lookup
+
+    a = {**_online(1, "Hello", "Zed Nobody"), "album": "First EP"}
+    b = {**_online(2, "Hello", "Zed Nobody"), "album": "Second EP"}
+    c = {**_online(3, "Hello", "Zed Nobody"), "album": None}
+    d = {**_online(4, "Hello", "Zed Nobody"), "album": None}
+    with mock.patch.object(online_lookup, "search_online", return_value=[a, b, c, d]):
+        at = _search("Hello Zed Nobody", mock.patch.object(media, "covers", return_value={}))
+    assert not at.exception
+    assert _picker(at).options == ["Hello - Zed Nobody · First EP", "Hello - Zed Nobody · Second EP",
+                                   "Hello - Zed Nobody", "Hello - Zed Nobody (2)"]
