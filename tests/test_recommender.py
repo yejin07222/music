@@ -164,3 +164,22 @@ def test_all_countries_pool(rec):
     assert all(best_all >= rec.recommend(adele, c, 1, **kw).similarity.iloc[0] - 1e-9 for c in ("Japan", "South Korea"))
     mood = rec.recommend_from_mood({"valence": 0.8, "energy": 0.8}, ALL_COUNTRIES, 10, method="euclid", weighted=True)
     assert len(mood) == 10
+
+
+def test_song_key_ignores_case_punctuation_and_version_suffixes():
+    from recommender import song_key
+
+    assert song_key("Wonderwall - Remastered", "Oasis") == song_key("WONDERWALL", "oasis")
+    assert song_key("Go Hard (feat. X)", "MEOVV") == song_key("Go Hard", "MEOVV")
+    assert song_key("(Intro)", "A")[0] != ""  # a title that is only brackets is kept
+    assert song_key("Go Hard", "MEOVV") != song_key("Go Hard", "Other")
+
+
+def test_has_song_matches_any_listed_artist():
+    from recommender import Recommender
+
+    rec = Recommender()
+    row = rec.df.iloc[0]
+    first_artist = row.artists.split(";")[-1]
+    assert rec.has_song(row.track_name.upper(), first_artist.lower())
+    assert not rec.has_song(row.track_name, "Nobody At All")

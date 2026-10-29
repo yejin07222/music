@@ -195,7 +195,7 @@ def test_wide_layout_rows_and_columns():
     flat = lambda nodes: [k for k, ch in nodes for k in [k] + (flat(ch) if ch else [])]
     # row 2, left: search + country side by side, then the picker; right: only the card (no player under it)
     assert flat(row2[0][1]) == ["Block:flex_container", "Block:flex_container", "Column:column", "TextInput:text_input",
-                                "Column:column", "Selectbox:selectbox", "Block:flex_container", "Selectbox:selectbox"]
+                                "Caption:caption", "Column:column", "Selectbox:selectbox", "Block:flex_container", "Selectbox:selectbox"]
     assert flat(row2[1][1]) == ["Block:flex_container", "UnknownElement:iframe", "Block:flex_container"]  # card, empty slot
     # row 3, left: heading, list, caption; right: heading, then one box with picker, subtitle, chart, divider, label, player
     assert [k for k, _ in row3[0][1]] == ["Markdown:markdown", "UnknownElement:iframe", "Caption:caption"]
@@ -285,3 +285,85 @@ def test_picker_shows_only_title_and_artist():
     assert picker.label.startswith("어떤 곡인가요?")
     assert picker.options[0] == "Someone Like You - Adele"
     assert all("[" not in o and "]" not in o for o in picker.options)  # no genres in square brackets
+
+
+def _picker(at):
+    return next(b for b in at.selectbox if b.label.startswith("어떤 곡인가요?"))
+
+
+def _online(i, title, artist, isrc="ISRC"):
+    return {"id": i, "title": title, "artist": artist, "isrc": isrc, "preview": None, "cover": None, "link": None}
+
+
+def test_picker_lists_data_songs_first_then_online_ones_without_repeats():
+    from unittest import mock
+
+    import media
+    import online_lookup
+
+    online = [_online(1, "Someone Like You", "Adele"), _online(2, "Someone Like You (Live)", "A Cover Band")]
+    with mock.patch.object(online_lookup, "search_online", return_value=online):
+        at = _search("Someone Like You", mock.patch.object(media, "covers", return_value={}))
+    assert not at.exception and not at.error
+    options = _picker(at).options
+    assert options[0] == "Someone Like You - Adele"
+    assert options.count("Someone Like You - Adele") == 1  # the online copy of a data song is dropped
+    assert options[-1] == "Someone Like You (Live) - A Cover Band (온라인)"
+    assert [o.endswith("(온라인)") for o in options] == sorted(o.endswith("(온라인)") for o in options)  # online ones last
+
+
+def test_online_song_in_the_picker_gets_its_recommendations():
+    from unittest import mock
+
+    import media
+    import online_lookup
+
+    mood = {f: 0.5 for f in online_lookup.FEATURES}
+    mood["tempo"] = 120.0
+    online = [_online(7, "Go Hard", "MEOVV", isrc=None)]
+    with mock.patch.object(online_lookup, "search_online", return_value=online), \
+            mock.patch.object(online_lookup, "resolve_isrc", return_value="KSA002652474") as resolve, \
+            mock.patch.object(online_lookup, "fetch_features", return_value=(mood, None)) as fetch:
+        at = _search("MEOVV Go Hard Zzzq", mock.patch.object(media, "covers", return_value={}))
+    assert not at.exception and not at.error
+    assert _picker(at).options == ["Go Hard - MEOVV (온라인)"]
+    resolve.assert_called_once_with(7)
+    fetch.assert_called_once_with("KSA002652474")
+    assert _table_html(at).count('class="row"') == 10
+
+
+def test_same_search_does_not_call_deezer_twice():
+    from unittest import mock
+
+    import media
+    import online_lookup
+
+    with mock.patch.object(online_lookup, "search_online", return_value=[_online(1, "X Song", "Y")]) as search, \
+            mock.patch.object(media, "covers", return_value={}):
+        at = AppTest.from_file(APP, default_timeout=120).run()
+        at.text_input[0].set_value("Someone Like You").run()
+        at.text_input[0].set_value("  someone   LIKE you ").run()  # same term once normalized
+        at.selectbox[0].set_value("Japan").run()  # any other rerun
+    assert not at.exception
+    assert search.call_count == 1
+
+
+def test_online_failure_still_shows_data_results_without_an_error():
+    from unittest import mock
+
+    import media
+    import online_lookup
+
+    for failure in (online_lookup.LookupFailed("timeout"), RuntimeError("boom")):
+        with mock.patch.object(online_lookup, "search_online", side_effect=failure):
+            at = _search("Someone Like You", mock.patch.object(media, "covers", return_value={}))
+        assert not at.exception and not at.error
+        assert _picker(at).options[0] == "Someone Like You - Adele"
+        assert not any(o.endswith("(온라인)") for o in _picker(at).options)
+
+
+def test_unknown_song_and_online_failure_offers_the_mood_sliders():
+    at = _search("zzqxjv no such song")
+    assert not at.exception
+    assert any("데이터에도 온라인에도 없어요" in w.value for w in at.warning)
+    assert len(at.slider) == 5

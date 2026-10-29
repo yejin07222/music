@@ -3,6 +3,7 @@
 Run: streamlit run app.py
 """
 import html
+import time
 
 import altair as alt
 import pandas as pd
@@ -12,7 +13,7 @@ import media
 import results_table
 from countries import ALL_COUNTRIES
 from recommender import Recommender
-from online_lookup import LookupFailed, fetch_features, search_songs
+from online_lookup import LookupFailed, fetch_features, resolve_isrc, search_online
 
 N_RESULTS = 10
 # Matching used by the app: Euclidean distance on weighted features, plus a style bonus when the
@@ -111,10 +112,16 @@ def show_player(src, height):
 
 
 # Failures raise and are therefore not cached. Deezer's preview links are signed and only
-# valid for about 15 minutes, so search results are kept for just 5.
+# valid for about 15 minutes, so search results are kept for just 5. Keyed by the normalized
+# search term, so the same search does not call Deezer again.
 @st.cache_data(ttl=300, show_spinner=False)
-def online_search(query):
-    return search_songs(query)
+def online_search(term):
+    return search_online(term)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def online_isrc(track_id):
+    return resolve_isrc(track_id)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -122,30 +129,53 @@ def online_features(isrc):
     return fetch_features(isrc)
 
 
-def recommend_from_online(query, country, picker_slot, card_slot, player_slot, notice_slot):
-    """For a song that is not in the dataset: pick it from a Deezer search, get its
-    audio features and recommend. The picker, card and player go into their slots on the page.
-    Returns (results, features, name, title), or None after showing a Korean message if anything goes wrong."""
+RETRY_AFTER_SECONDS = 60  # after a failed online search, do not make the page wait for it again for a while
+
+
+def online_term(query):
+    return " ".join(query.lower().split())
+
+
+def online_state(query):
+    """The online result for this search as (songs, error_code), or None if it has not been looked up yet
+    (or a failed lookup is old enough to try again)."""
+    entry = st.session_state.get("online_results", {}).get(online_term(query))
+    if entry and (entry[1] is None or time.time() - entry[2] < RETRY_AFTER_SECONDS):
+        return entry[:2]
+    return None
+
+
+def fetch_online_and_rerun(query):
+    """Look up the online songs (the data results are already on the page by now), remember the outcome
+    and run the page again so the picker gets them. Never raises: if the online search fails or is slow
+    the page just goes on with the data songs."""
+    term = online_term(query)
     try:
-        with st.spinner("온라인에서 곡을 찾는 중…"):
-            choices = online_search(query)
-        with picker_slot:
-            picked = st.selectbox(
-                f"어떤 곡인가요? ({len(choices)}곡 검색됨)",
-                range(len(choices)),
-                format_func=lambda i: f"{choices[i]['title']} - {choices[i]['artist']}",
-            )
-        choice = choices[picked]
-        with card_slot:
-            show_song_card(
-                choice["title"], choice["artist"], choice["cover"], media.deezer_track_url(choice["link"]),
-                "Deezer에서 듣기", media.youtube_search_url(choice["artist"], choice["title"]),
-            )
-        with player_slot:
-            st.caption("내가 고른 곡 미리듣기")
-            show_player(media.deezer_player_html(choice["preview"], choice["cover"]), media.DEEZER_PLAYER_HEIGHT)
+        songs, error = online_search(term), None
+    except LookupFailed as e:
+        songs, error = [], e.code
+    except Exception:
+        songs, error = [], "bad_response"
+    st.session_state.setdefault("online_results", {})[term] = (songs, error, time.time())
+    st.rerun()
+
+
+def recommend_from_online(choice, country, card_slot, player_slot, notice_slot):
+    """For an online song (not in the dataset): show its card and player, get its audio features
+    and recommend. Returns (results, features, name, title), or None after showing a Korean message
+    if anything goes wrong."""
+    with card_slot:
+        show_song_card(
+            choice["title"], choice["artist"], choice["cover"], media.deezer_track_url(choice["link"]),
+            "Deezer에서 듣기", media.youtube_search_url(choice["artist"], choice["title"]),
+        )
+    with player_slot:
+        st.caption("내가 고른 곡 미리듣기")
+        show_player(media.deezer_player_html(choice["preview"], choice["cover"]), media.DEEZER_PLAYER_HEIGHT)
+    try:
         with st.spinner("곡의 분위기를 분석하는 중…"):
-            features, spotify_id = online_features(choice["isrc"])
+            isrc = choice["isrc"] or online_isrc(choice["id"])  # artist song lists do not carry the ISRC
+            features, spotify_id = online_features(isrc)
     except LookupFailed as e:
         with notice_slot:
             st.error(f"{LOOKUP_ERRORS[e.code]} 대신 슬라이더로 분위기를 정해 보세요.")
@@ -294,6 +324,7 @@ with inputs_col:
         search_col, country_col = st.columns([2, 1])  # search box and country dropdown side by side
         with search_col:
             query = st.text_input("노래 제목이나 가수 이름", placeholder="예: Someone Like You")
+            st.caption("가수 이름도 같이 쓰면 더 잘 찾아요 (예: Go Hard MEOVV)")
         with country_col:
             countries = COUNTRY_ORDER_FIRST + [c for c in rec.countries if c not in COUNTRY_ORDER_FIRST]
             country = st.selectbox("나라 선택", countries, format_func=COUNTRY_LABELS.get)
@@ -307,45 +338,71 @@ if not query.strip():
     st.stop()
 
 found = rec.search(query)
-if found.empty:
+state = online_state(query)  # None: not looked up yet; the data results are shown first and the lookup follows below
+online, online_error = state or ([], None)
+online = [s for s in online if not rec.has_song(s["title"], s["artist"])]  # a song the data has is shown once, from the data
+
+# One picker: the songs from the data first (most popular first), then the online ones
+choices = {row.track_id: (song_label(row), row) for row in found.itertuples()}
+choices.update({f"online:{s['id']}": (f"{s['title']} - {s['artist']} (온라인)", s) for s in online})
+
+
+def mood_sliders():
     with notice_slot:
-        st.warning(f"“{query}”는 데이터에 없는 곡이에요. 온라인에서 찾아볼게요.")
+        st.subheader("분위기를 직접 정해 볼까요?")
+        st.caption("슬라이더로 원하는 분위기를 정해서 추천받을 수 있어요.")
+        return {
+            "valence": st.slider("밝기", 0.0, 1.0, 0.5, 0.05, help="낮을수록 어둡고 슬픈 느낌, 높을수록 밝고 행복한 느낌"),
+            "energy": st.slider("에너지", 0.0, 1.0, 0.5, 0.05, help="높을수록 강렬하고 시끄러운 느낌"),
+            "danceability": st.slider("댄스성", 0.0, 1.0, 0.5, 0.05, help="높을수록 춤추기 좋은 리듬"),
+            "acousticness": st.slider("어쿠스틱", 0.0, 1.0, 0.5, 0.05, help="높을수록 전자음 없이 악기 소리 중심"),
+            "tempo": st.slider("템포 (BPM)", 60, 200, 120, 5),
+        }
+
+
+chosen = None
+if not choices and state is None:
+    with picker_slot:
+        st.caption("온라인에서 찾는 중…")
+    fetch_online_and_rerun(query)
+elif not choices:
+    with notice_slot:
+        st.warning(f"“{query}”는 데이터에도 온라인에도 없어요.")
+        if online_error:
+            st.caption(f"{LOOKUP_ERRORS[online_error]}")
         st.caption("※ 데이터에 없는 곡은 비공식 무료 서비스(Deezer, ReccoBeats)로 찾기 때문에 가끔 작동하지 않을 수 있어요.")
-    online = recommend_from_online(query, country, picker_slot, card_slot, player_slot, notice_slot)
-    if online:
-        results, my_values, my_name, my_title = online
+else:
+    with picker_slot:
+        key = st.selectbox(
+            f"어떤 곡인가요? ({len(choices)}곡 검색됨, 데이터 곡이 먼저)",
+            list(choices),
+            format_func=lambda k: choices[k][0],
+        )
+        if state is None:
+            st.caption("온라인에서 찾는 중…")
+    chosen = choices[key][1]
+    if key in found["track_id"].values:
+        with card_slot:
+            show_song_card(
+                chosen.track_name, chosen.artists, song_cover(key, chosen.artists, chosen.track_name),
+                media.spotify_track_url(key), "Spotify에서 듣기", media.youtube_search_url(chosen.artists, chosen.track_name),
+            )
+        results = rec.recommend(key, country, N_RESULTS, style=True, **MATCH)
+        my_values = df.loc[df["track_id"] == key, [c for c, _ in CHART_FEATURES]].iloc[0].to_dict()
+        my_name = "내가 고른 곡"
+        my_title = chosen.track_name
     else:
         with notice_slot:
-            st.subheader("분위기를 직접 정해 볼까요?")
-            st.caption("슬라이더로 원하는 분위기를 정해서 추천받을 수 있어요.")
-            mood = {
-                "valence": st.slider("밝기", 0.0, 1.0, 0.5, 0.05, help="낮을수록 어둡고 슬픈 느낌, 높을수록 밝고 행복한 느낌"),
-                "energy": st.slider("에너지", 0.0, 1.0, 0.5, 0.05, help="높을수록 강렬하고 시끄러운 느낌"),
-                "danceability": st.slider("댄스성", 0.0, 1.0, 0.5, 0.05, help="높을수록 춤추기 좋은 리듬"),
-                "acousticness": st.slider("어쿠스틱", 0.0, 1.0, 0.5, 0.05, help="높을수록 전자음 없이 악기 소리 중심"),
-                "tempo": st.slider("템포 (BPM)", 60, 200, 120, 5),
-            }
-        results = rec.recommend_from_mood(mood, country, N_RESULTS, **MATCH)
-        my_values = mood
-        my_name = my_title = "내가 정한 분위기"
-else:
-    songs = {row.track_id: row for row in found.itertuples()}
-    with picker_slot:
-        track_id = st.selectbox(
-            f"어떤 곡인가요? ({len(found)}곡 검색됨, 인기순)",
-            list(songs),
-            format_func=lambda tid: song_label(songs[tid]),
-        )
-    song = songs[track_id]
-    with card_slot:
-        show_song_card(
-            song.track_name, song.artists, song_cover(track_id, song.artists, song.track_name), media.spotify_track_url(track_id),
-            "Spotify에서 듣기", media.youtube_search_url(song.artists, song.track_name),
-        )
-    results = rec.recommend(track_id, country, N_RESULTS, style=True, **MATCH)
-    my_values = df.loc[df["track_id"] == track_id, [c for c, _ in CHART_FEATURES]].iloc[0].to_dict()
-    my_name = "내가 고른 곡"
-    my_title = song.track_name
+            st.caption("※ 데이터에 없는 곡은 비공식 무료 서비스(Deezer, ReccoBeats)로 찾기 때문에 가끔 작동하지 않을 수 있어요.")
+        got = recommend_from_online(chosen, country, card_slot, player_slot, notice_slot)
+        if got:
+            results, my_values, my_name, my_title = got
+        else:
+            chosen = None
+if chosen is None:  # nothing found, or the picked online song could not be analysed
+    my_values = mood_sliders()
+    results = rec.recommend_from_mood(my_values, country, N_RESULTS, **MATCH)
+    my_name = my_title = "내가 정한 분위기"
 
 # Row 3 (3:2), aligned at the top: the results list on the left, the comparison box on the right
 country_name = COUNTRY_LABELS[country]
@@ -355,6 +412,8 @@ with list_col:
     st.markdown(f'<div class="sec-title">{html.escape(country_name)} 음악 중 분위기가 비슷한 곡</div>', unsafe_allow_html=True)
     if results.empty:
         st.warning(f"{country_name}에서 추천할 수 있는 곡이 없어요.")
+        if state is None:
+            fetch_online_and_rerun(query)
         st.stop()
     try:  # album covers; if they cannot be loaded the list just has no covers
         cover_urls = media.covers(
@@ -423,3 +482,6 @@ st.caption("※ 미리듣기와 앨범 커버는 Spotify와 Deezer에서 불러�
 st.markdown(
     f"<style>.stApp .st-key-compare {{ min-height: {list_h}px; }}</style>", unsafe_allow_html=True
 )
+
+if state is None:  # the page is complete with the data songs; now look online and run the page again with those added
+    fetch_online_and_rerun(query)

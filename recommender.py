@@ -7,6 +7,7 @@ Works without Streamlit. Terminal usage:
 import argparse
 import functools
 import os
+import re
 import unicodedata
 
 import numpy as np
@@ -52,6 +53,15 @@ STYLE_BONUS = 0.2  # added to the 0-1 similarity of candidates whose style match
 @functools.lru_cache(maxsize=None)
 def _non_latin_letter(ch):
     return ch.isalpha() and "LATIN" not in unicodedata.name(ch, "")
+
+
+def song_key(title, artist):
+    """What makes two listings the same song: the title without "(...)" / "[...]" / " - Remastered"-style
+    additions, and the artist, both lower-case with only letters and digits."""
+    short = re.split(r"\s+-\s+", re.sub(r"\s*[(\[].*?[)\]]", "", title))[0]
+    title = short if any(ch.isalnum() for ch in short) else title
+    clean = lambda t: "".join(ch for ch in unicodedata.normalize("NFKC", t).casefold() if ch.isalnum())
+    return clean(title), clean(artist)
 
 
 def has_non_latin(text):
@@ -135,6 +145,15 @@ class Recommender:
         if country not in self._country_mask:
             raise ValueError(f"Unknown country: {country!r}")
         return self._country_mask[country]
+
+    def has_song(self, title, artist):
+        """True if the data has this song (same title and artist, ignoring case, punctuation and
+        remaster/version suffixes), whichever of its artists `artist` names."""
+        if not hasattr(self, "_song_keys"):
+            self._song_keys = {
+                song_key(t, a) for t, artists in zip(self.df["track_name"], self.df["artists"]) for a in artists.split(";")
+            }
+        return song_key(title, artist) in self._song_keys
 
     def search(self, query, limit=20):
         """Songs whose title or artist contains `query` (case-insensitive),

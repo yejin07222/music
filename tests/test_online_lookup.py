@@ -100,3 +100,118 @@ def test_search_keeps_preview_and_cover():
         songs = ol.search_songs("q")
     assert songs[0]["preview"].endswith("p.mp3") and songs[0]["cover"].endswith("c.jpg")
     assert songs[1]["preview"] is None and songs[1]["cover"] is None
+
+
+def _routes(table):
+    """A urlopen stand-in answering by URL path prefix; a value that is an Exception is raised."""
+    def fake(req, timeout=None):
+        url = req.full_url
+        for prefix, payload in table.items():
+            if prefix in url:
+                if isinstance(payload, Exception):
+                    raise payload
+                return _response(payload)
+        raise AssertionError(f"unexpected url {url}")
+    return fake
+
+
+def _track(i, title, artist, isrc=None):
+    return {"id": i, "title": title, "artist": {"name": artist}, "isrc": isrc, "preview": "p", "link": "l",
+            "album": {"cover_medium": "c"}}
+
+
+def test_search_online_puts_the_exact_name_artist_with_most_fans_first():
+    table = {
+        "/search/artist": {"data": [
+            {"id": 1, "name": "Oasis", "nb_fan": 10}, {"id": 927, "name": "oasis", "nb_fan": 900000},
+            {"id": 2, "name": "Oasis Jazz", "nb_fan": 9999},
+        ]},
+        "/artist/927/top": {"data": [_track(11, "Wonderwall", "Oasis"), _track(12, "Supersonic", "Oasis")]},
+        "/search?": {"data": [_track(21, "Oasis", "Other", "ISRC21"), _track(11, "Wonderwall", "Oasis", "ISRC11")]},
+    }
+    with mock.patch("urllib.request.urlopen", side_effect=_routes(table)):
+        songs = ol.search_online("Oasis")
+    assert [(s["id"], s["isrc"]) for s in songs] == [(11, None), (12, None), (21, "ISRC21")]  # artist songs first, no repeat
+
+
+def test_search_online_without_artist_match_uses_the_title_search_only():
+    table = {"/search/artist": {"data": [{"id": 5, "name": "Someone", "nb_fan": 1}]},
+             "/search?": {"data": [_track(1, "Go Hard", "A", "I1")]}}
+    with mock.patch("urllib.request.urlopen", side_effect=_routes(table)):
+        assert [s["title"] for s in ol.search_online("Go Hard")] == ["Go Hard"]
+
+
+def test_search_online_uses_newest_albums_when_the_top_list_is_empty():
+    table = {
+        "/search/artist": {"data": [{"id": 7, "name": "MEOVV", "nb_fan": 50000}]},
+        "/artist/7/top": {"data": []},
+        "/artist/7/albums": {"data": [{"id": 70, "release_date": "2024-01-01", "cover_medium": "old"},
+                                      {"id": 71, "release_date": "2025-06-01", "cover_medium": "new"}]},
+        "/album/71/tracks": {"data": [{"id": 5, "title": "GO HARD", "artist": {"name": "MEOVV"}}]},
+        "/album/70/tracks": {"data": []},
+        "/search?": {"data": [_track(9, "Go Hard", "Other", "I9")]},
+    }
+    with mock.patch("urllib.request.urlopen", side_effect=_routes(table)):
+        songs = ol.search_online("MEOVV")
+    assert [(s["title"], s["cover"]) for s in songs] == [("GO HARD", "new"), ("Go Hard", "c")]
+
+
+def test_search_online_survives_one_lookup_failing_but_not_both():
+    ok = {"/search?": {"data": [_track(1, "A", "x", "I1")]}}
+    with mock.patch("urllib.request.urlopen", side_effect=_routes({"/search/artist": _http_error(500), **ok})):
+        assert [s["id"] for s in ol.search_online("q")] == [1]
+    with mock.patch("urllib.request.urlopen", side_effect=_routes({"/search/artist": _http_error(429), "/search?": _http_error(500)})):
+        with pytest.raises(ol.LookupFailed) as e:
+            ol.search_online("q")
+    assert e.value.code == "rate_limit"
+
+
+def test_search_online_no_results():
+    with mock.patch("urllib.request.urlopen", side_effect=_routes({"/search/artist": {"data": []}, "/search?": {"data": []}})):
+        with pytest.raises(ol.LookupFailed) as e:
+            ol.search_online("q")
+    assert e.value.code == "no_results"
+
+
+def test_resolve_isrc():
+    with mock.patch("urllib.request.urlopen", return_value=_response({"id": 1, "isrc": " gbaaa1 "})):
+        assert ol.resolve_isrc(1) == "GBAAA1"
+    with mock.patch("urllib.request.urlopen", return_value=_response({"id": 1})):
+        with pytest.raises(ol.LookupFailed) as e:
+            ol.resolve_isrc(1)
+    assert e.value.code == "not_found"
+
+
+def test_search_online_ignores_artists_with_very_few_fans():
+    table = {"/search/artist": {"data": [{"id": 5, "name": "Someone Like You", "nb_fan": 4370}]},
+             "/search?": {"data": [_track(1, "Someone Like You", "Adele", "I1")]}}  # no /top route: it must not be asked
+    with mock.patch("urllib.request.urlopen", side_effect=_routes(table)):
+        assert [s["artist"] for s in ol.search_online("Someone Like You")] == ["Adele"]
+
+
+def test_search_online_finds_a_song_from_title_plus_artist():
+    table = {
+        "/search/artist": {"data": [{"id": 7, "name": "MEOVV", "nb_fan": 50000}]},
+        "/artist/7/top": {"data": [_track(1, "ME ME ME", "MEOVV")]},  # the hinted song is missing here
+        "/artist/7/albums": {"data": [{"id": 70, "release_date": "2025-06-01"}]},
+        "/album/70/tracks": {"data": [{"id": 5, "title": "GO HARD", "artist": {"name": "MEOVV"}}, _track(6, "Team", "MEOVV")]},
+        "/search?": {"data": [_track(1, "ME ME ME", "MEOVV", "I1")]},
+    }
+    with mock.patch("urllib.request.urlopen", side_effect=_routes(table)):
+        songs = ol.search_online("Go Hard MEOVV")
+    assert songs[0]["title"] == "GO HARD"
+
+
+def test_search_online_gives_up_on_slow_lookups_after_the_time_limit():
+    import time
+
+    def fake(req, timeout=None):
+        if "/search/artist" in req.full_url:
+            time.sleep(1.0)
+            return _response({"data": []})
+        return _response({"data": [_track(1, "A", "x", "I1")]})
+
+    start = time.monotonic()
+    with mock.patch.object(ol, "SEARCH_TIMEOUT_SECONDS", 0.2), mock.patch("urllib.request.urlopen", side_effect=fake):
+        songs = ol.search_online("q")
+    assert [s["id"] for s in songs] == [1] and time.monotonic() - start < 0.8
