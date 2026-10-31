@@ -21,8 +21,10 @@ Rule: a song counts for a country only if it has one of that country's genres
 - Exported all 868 South Korea songs to `review/korea_review.csv` with
   automatic "suspicious" flags (artist also in another country's genre,
   `pop-film`, Indian-script text). 320 were flagged.
-- Reviewed by hand: **473 removed (N), 395 kept**. Most removed songs had not
-  been flagged, so the flags only helped as hints.
+- Reviewed by hand: **473 removed (N), 395 kept**. Of the 473 removed songs,
+  311 had been flagged and 162 had not; of the 320 flagged songs, 9 were kept.
+  So the flags caught about two thirds of the wrong songs and the rest needed
+  the manual check.
 - The removed IDs are in `data/excluded_tracks.csv`; the recommender skips
   them. Non-Korean rap songs (e.g. Jack Harlow) were also tagged `k-pop`.
 
@@ -335,6 +337,7 @@ would pass the check. The genre tags come from MusicBrainz and are loose (K-pop 
 Korean artists use English names. **These songs were not reviewed by hand** (unlike the 400
 dataset songs and the Japan and 영어권 reviews), only their artists can be checked in the review
 file; the app's footer still says that Korea was reviewed by hand.
+The "reviewed by hand" note applies only to the original 400 songs; the 14,003 extra songs were checked by artist (section 14), not song by song.
 
 Rerun: `python scripts/collect_korea_extra.py` (options `--max-albums`, `--limit-artists`,
 `--no-playlists`). Every network answer is cached in `scripts/.cache/korea_extra/` (not committed),
